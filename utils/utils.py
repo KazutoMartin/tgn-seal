@@ -4,7 +4,7 @@ import torch
 from scipy.sparse.csgraph import shortest_path
 from torch_geometric.utils import to_scipy_sparse_matrix
 from torch_geometric.data import Data
-
+from collections import deque
 
 class EarlyStopMonitor(object):
     def __init__(self, max_round=3, higher_better=True, tolerance=1e-10):
@@ -153,6 +153,103 @@ def get_neighbor_finder(data, uniform, max_node_idx=None):
     return NeighborFinder(adj_list, uniform=uniform)
 
 
+
+
+
+class TemporalSubgraphCache:
+    def __init__(self, ttl_window=86400, max_edges=150):
+        self.ttl_window = ttl_window
+        self.max_edges = max_edges
+        self.max_nodes = max_edges * 2  # 2 nodes per edge
+        self.subgraph_cache = {}  
+        self.ttl_tracker = {}     
+        self.cache_hits = 0       
+        self.cache_misses = 0
+
+    def get_subgraph(self, node_id, timestamp, neighbor_finder, y, hop, n_neighbors):
+        # Ensure time difference is positive (no time-travel) and within the TTL
+        if node_id in self.ttl_tracker and (0 <= timestamp - self.ttl_tracker[node_id] <= self.ttl_window):
+            self.cache_hits += 1
+            cache = self.subgraph_cache[node_id]
+            
+            # Cast the deques to numpy arrays only at the exact moment the model needs them
+            return {
+                'nodes': np.array(cache['nodes'], dtype=np.int64),
+                'edge_idxs': np.array(cache['edge_idxs'], dtype=np.int64),
+                'edge_times': np.array(cache['edge_times'], dtype=np.float32),
+                'edge_index': [list(cache['edge_index_0']), list(cache['edge_index_1'])]
+            }
+        
+        self.cache_misses += 1
+        n_nodes, e_idxs, e_times, e_index = neighbor_finder.get_k_hop_temporal_neighbor(
+            [node_id], [timestamp], y, hop, n_neighbors
+        )
+
+        # Because get_k_hop_temporal_neighbor might return a numpy array or a list,
+        # I didn't want to change the existing code.
+        if isinstance(e_index, np.ndarray):
+            e_index = e_index.tolist()
+
+        # Initialize the cache using deques for ultra-fast, zero-copy FIFO buffering
+        subgraph_data = {
+            'nodes': deque(n_nodes.tolist() if isinstance(n_nodes, np.ndarray) else n_nodes, maxlen=self.max_nodes),
+            'edge_idxs': deque(e_idxs.tolist() if isinstance(e_idxs, np.ndarray) else e_idxs, maxlen=self.max_edges),
+            'edge_times': deque(e_times.tolist() if isinstance(e_times, np.ndarray) else e_times, maxlen=self.max_edges),
+            'edge_index_0': deque(e_index[0], maxlen=self.max_edges),
+            'edge_index_1': deque(e_index[1], maxlen=self.max_edges)
+        }
+        self.subgraph_cache[node_id] = subgraph_data
+        self.ttl_tracker[node_id] = timestamp
+        
+        # Return standard arrays for the immediate extraction step
+        return {
+            'nodes': np.array(subgraph_data['nodes'], dtype=np.int64),
+            'edge_idxs': np.array(subgraph_data['edge_idxs'], dtype=np.int64),
+            'edge_times': np.array(subgraph_data['edge_times'], dtype=np.float32),
+            'edge_index': [list(subgraph_data['edge_index_0']), list(subgraph_data['edge_index_1'])]
+        }
+
+    def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=3, n_neighbors=10):
+        affected_nodes = set([src, dst])
+
+        if hop - 1 > 0:
+            current_frontier = set([src, dst])
+            for _ in range(hop - 1):
+                next_frontier = set()
+                for node in current_frontier:
+                    neighbors, _, _ = neighbor_finder.find_before(node, ts)
+                    if len(neighbors) > n_neighbors:
+                        neighbors = neighbors[-n_neighbors:]
+                        
+                    new_neighbors = set(neighbors) - affected_nodes
+                    next_frontier.update(new_neighbors)
+                    affected_nodes.update(new_neighbors)
+                    
+                current_frontier = next_frontier
+                if not current_frontier:
+                    break
+
+        for node in affected_nodes:
+            if node in self.ttl_tracker and (ts - self.ttl_tracker[node] <= self.ttl_window):
+                cache = self.subgraph_cache[node]
+                
+                # --- O(1) PERFORMANCE ---
+                # The deque automatically drops the oldest items in C-code, zero slicing required.
+                cache['nodes'].extend([src, dst])
+                cache['edge_times'].append(ts)
+                cache['edge_idxs'].append(edge_idx)
+                
+                cache['edge_index_0'].append(src)
+                cache['edge_index_1'].append(dst)
+                
+                self.ttl_tracker[node] = ts
+
+    def reset_cache(self):
+        self.subgraph_cache = {}  
+        self.ttl_tracker = {}     
+        self.cache_hits = 0       
+        self.cache_misses = 0
+
 class NeighborFinder:
     def __init__(self, adj_list, uniform=False, seed=None):
         self.node_to_neighbors = []
@@ -174,6 +271,8 @@ class NeighborFinder:
         if seed is not None:
             self.seed = seed
             self.random_state = np.random.RandomState(self.seed)
+
+        self.cache = TemporalSubgraphCache()
 
     def find_before(self, src_idx, cut_time):
         """
@@ -336,7 +435,7 @@ class NeighborFinder:
             return neighbors, edge_idxs, edge_times, edge_index
 
     def extract_enclosing_subgraph(
-        self, src_nodes, dst_nodes, edge_times, y, hop=3, n_neighbors=10
+        self, src_nodes, dst_nodes, edge_times, y, hop=3, n_neighbors=10, use_cache=False
     ):
         data_list = []
 
@@ -344,20 +443,38 @@ class NeighborFinder:
             if src == dst:
                 dst = random.randint(0, dst - 1)
 
-            sub_nodes, sub_edge_idxs, sub_edge_times, sub_edge_index = (
+            if use_cache:
+                # CACHE ROUTING
+                src_subgraph = self.cache.get_subgraph(src, ts, self, y, hop, n_neighbors)
+                dst_subgraph = self.cache.get_subgraph(dst, ts, self, y, hop, n_neighbors)
+
+                sub_nodes = np.concatenate([src_subgraph['nodes'], dst_subgraph['nodes'], [src, dst]])
+                sub_edge_idxs = np.concatenate([src_subgraph['edge_idxs'], dst_subgraph['edge_idxs']])
+                sub_edge_times = np.concatenate([src_subgraph['edge_times'], dst_subgraph['edge_times']])
+                
+                # Convert back to 2D numpy array for downstream processing
+                sub_edge_index = np.array([
+                    src_subgraph['edge_index'][0] + dst_subgraph['edge_index'][0],
+                    src_subgraph['edge_index'][1] + dst_subgraph['edge_index'][1]
+                ], dtype=np.int64)
+                # END CACHE ROUTING
+            else:
+                sub_nodes, sub_edge_idxs, sub_edge_times, sub_edge_index = (
                 self.get_k_hop_temporal_neighbor(
                     [src, dst], [ts, ts], y, hop, n_neighbors
+                    )
                 )
-            )
 
-            sub_nodes = np.append(sub_nodes, src)
-            sub_nodes = np.append(sub_nodes, dst)
+                sub_nodes = np.append(sub_nodes, src)
+                sub_nodes = np.append(sub_nodes, dst)
 
             sub_nodes, sub_edge_idxs, sub_edge_times, sub_edge_index = (
                 remove_redundant_edge(
                     sub_nodes, sub_edge_idxs, sub_edge_times, sub_edge_index
                 )
             )
+
+            sub_nodes = np.unique(np.concatenate([sub_nodes, sub_edge_index[0], sub_edge_index[1], [src, dst]]))
 
             node_timestamps = get_node_max_ts(
                 sub_nodes, sub_edge_times, sub_edge_index, ts

@@ -43,6 +43,7 @@ class TGN(torch.nn.Module):
         link_pred_module_type="dgcnn",
         max_z=100,
         batch_size=200,
+        use_cache=False
     ):
         super(TGN, self).__init__()
 
@@ -144,6 +145,8 @@ class TGN(torch.nn.Module):
             hidden_channels=32,
             num_layers=3,
         )
+
+        self.use_cache = use_cache
 
     def compute_temporal_embeddings(
         self,
@@ -328,11 +331,11 @@ class TGN(torch.nn.Module):
         n_samples = len(source_nodes)
 
         pos_data_list = self.neighbor_finder.extract_enclosing_subgraph(
-            source_nodes, destination_nodes, edge_times, y=1, hop=3, n_neighbors=10
+            source_nodes, destination_nodes, edge_times, y=1, hop=3, n_neighbors=10, use_cache=self.use_cache
         )
 
         neg_data_list = self.neighbor_finder.extract_enclosing_subgraph(
-            source_nodes, negative_nodes, edge_times, y=0, hop=3, n_neighbors=10
+            source_nodes, negative_nodes, edge_times, y=0, hop=3, n_neighbors=10, use_cache=self.use_cache
         )
 
         pos_data_list, neg_data_list = self.compute_temporal_embeddings(

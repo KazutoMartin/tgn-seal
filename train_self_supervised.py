@@ -124,12 +124,17 @@ parser.add_argument(
 parser.add_argument(
     "--dyrep", action="store_true", help="Whether to run the dyrep model"
 )
+
 parser.add_argument(
     "--link_pred_module",
     type=str,
     default="dgcnn",
     choices=["dgcnn", "gin", "sage", "gcn", "merge"],
     help="Type of link prediction module",
+)
+
+parser.add_argument(
+    "--use_cache", action="store_true", help="Enable the incremental push cache"
 )
 
 try:
@@ -153,6 +158,7 @@ TIME_DIM = args.time_dim
 USE_MEMORY = args.use_memory
 MESSAGE_DIM = args.message_dim
 MEMORY_DIM = args.memory_dim
+USE_CACHE = args.use_cache
 
 Path("./saved_models/").mkdir(parents=True, exist_ok=True)
 Path("./saved_checkpoints/").mkdir(parents=True, exist_ok=True)
@@ -258,6 +264,7 @@ for i in range(args.n_runs):
         dyrep=args.dyrep,
         link_pred_module_type=args.link_pred_module,
         batch_size=BATCH_SIZE,
+        use_cache=USE_CACHE
     )
     criterion = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(tgn.parameters(), lr=LEARNING_RATE)
@@ -284,6 +291,11 @@ for i in range(args.n_runs):
         # Reinitialize memory of the model at the start of each epoch
         if USE_MEMORY:
             tgn.memory.__init_memory__()
+
+        # PREVENT CROSS-EPOCH LEAKS
+        if USE_CACHE:
+            train_ngh_finder.cache.reset_cache()
+            full_ngh_finder.cache.reset_cache()
 
         # Train using only training graph
         tgn.set_neighbor_finder(train_ngh_finder)
@@ -338,6 +350,14 @@ for i in range(args.n_runs):
             optimizer.step()
             m_loss.append(loss.item())
 
+            # PUSH NEW EDGES TO CACHE ENTITY
+            if USE_CACHE:
+                for s, d, t, e_idx in zip(sources_batch, destinations_batch, timestamps_batch, edge_idxs_batch):
+                    train_ngh_finder.cache.push_edge(
+                        src=s, dst=d, ts=t, edge_idx=e_idx, 
+                        neighbor_finder=train_ngh_finder
+                    )
+
             # Detach memory after 'args.backprop_every' number of batches so we don't backpropagate to
             # the start of time
             if USE_MEMORY:
@@ -345,6 +365,16 @@ for i in range(args.n_runs):
 
         epoch_time = time.time() - start_epoch
         epoch_times.append(epoch_time)
+
+        # Cache analysis
+        if USE_CACHE:
+            hits = train_ngh_finder.cache.cache_hits
+            misses = train_ngh_finder.cache.cache_misses
+            total_queries = hits + misses
+            if total_queries > 0:
+                logger.info("Cache Hit Rate: {:.2f}% (Hits: {}, Misses: {})".format(
+                    (hits / total_queries) * 100, hits, misses
+                ))
 
         ### Validation
         # Validation uses the full graph
