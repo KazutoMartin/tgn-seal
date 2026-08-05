@@ -95,9 +95,6 @@ To compare against baseline models:
 python -m plots.plot_results
 ```
 
-Here’s a clean way to add that information to your README under a new **“Evaluation”** section, so users know the order
-of operations:
-
 ---
 
 ## Evaluation
