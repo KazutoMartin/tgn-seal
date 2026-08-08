@@ -222,6 +222,9 @@ nn_test_rand_sampler = RandEdgeSampler(
 device_string = "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
 device = torch.device(device_string)
 
+if device.type == "cuda":
+    print(f"GPU:{torch.cuda.get_device_name(0)}")
+
 # Compute time statistics
 mean_time_shift_src, std_time_shift_src, mean_time_shift_dst, std_time_shift_dst = (
     compute_time_statistics(
