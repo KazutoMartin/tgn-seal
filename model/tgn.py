@@ -367,26 +367,28 @@ class TGN(torch.nn.Module):
             n_neighbors,
         )
 
+        # --- POSITIVE SAMPLES ---
         pos_loader = DataLoader(pos_data_list, batch_size=self.batch_size)
-        pos_batch = iter(pos_loader)
         pos_score = None
-        for data in pos_batch:
-            # Removed data.edge_index
-            pos_score = self.link_score(
-                data.x, data.z, data.batch
-            )
+        for data in pos_loader:
+            # 1. Move the entire data batch (including z and batch) to the GPU
+            data = data.to(self.device) 
+            
+            # 2. Pass to the transformer
+            pos_score = self.link_score(data.x, data.z, data.batch)
 
-        # Update Negative Loader Loop
-        neg_loader = DataLoader(neg_data_list, batch_size=200)
-        neg_batch = iter(neg_loader)
+        # --- NEGATIVE SAMPLES ---
+        # Note: I updated this to use self.batch_size instead of the hardcoded 200
+        neg_loader = DataLoader(neg_data_list, batch_size=self.batch_size) 
         neg_score = None
-        for data in neg_batch:
-            # Removed data.edge_index
-            neg_score = self.link_score(
-                data.x, data.z, data.batch
-            )
+        for data in neg_loader:
+            # 1. Move the entire data batch to the GPU
+            data = data.to(self.device)
+            
+            # 2. Pass to the transformer
+            neg_score = self.link_score(data.x, data.z, data.batch)
 
-        return torch.Tensor(pos_score), torch.Tensor(neg_score)
+        return pos_score, neg_score
 
     def update_memory(self, nodes, messages):
         # Aggregate messages for the same nodes
