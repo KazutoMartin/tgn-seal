@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+import concurrent.futures
 
 import numpy as np
 import torch
@@ -12,6 +13,8 @@ from modules.memory import Memory
 from modules.memory_updater import get_memory_updater
 from modules.message_aggregator import get_message_aggregator
 from modules.message_function import get_message_function
+
+from modules.transformer_link_pred import TransformerLinkPred
 
 
 class TGN(torch.nn.Module):
@@ -138,12 +141,13 @@ class TGN(torch.nn.Module):
         )
 
         self.link_pred_module_type = link_pred_module_type
-        self.link_score = get_link_pred_module(
-            module_type=link_pred_module_type,
-            num_features=self.n_node_features,
+        self.link_score = TransformerLinkPred(
+            in_channels=self.n_node_features,
+            hidden_channels=32, # Configurable
+            num_layers=2,       # Configurable
             max_z=max_z,
-            hidden_channels=32,
-            num_layers=3,
+            num_heads=2,        # Configurable
+            dropout=dropout
         )
 
         self.use_cache = use_cache
@@ -330,6 +334,20 @@ class TGN(torch.nn.Module):
         """
         n_samples = len(source_nodes)
 
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        #     future_pos = executor.submit(
+        #         self.neighbor_finder.extract_enclosing_subgraph,
+        #         source_nodes, destination_nodes, edge_times, 1, 3, 10, self.use_cache
+        #     )
+        #     future_neg = executor.submit(
+        #         self.neighbor_finder.extract_enclosing_subgraph,
+        #         source_nodes, negative_nodes, edge_times, 0, 3, 10, self.use_cache
+        #     )
+            
+        #     # Wait for both threads to finish and retrieve the results
+        #     pos_data_list = future_pos.result()
+        #     neg_data_list = future_neg.result()
+
         pos_data_list = self.neighbor_finder.extract_enclosing_subgraph(
             source_nodes, destination_nodes, edge_times, y=1, hop=3, n_neighbors=10, use_cache=self.use_cache
         )
@@ -353,16 +371,19 @@ class TGN(torch.nn.Module):
         pos_batch = iter(pos_loader)
         pos_score = None
         for data in pos_batch:
+            # Removed data.edge_index
             pos_score = self.link_score(
-                data.x, data.z, data.edge_index.to(self.device), data.batch
+                data.x, data.z, data.batch
             )
 
+        # Update Negative Loader Loop
         neg_loader = DataLoader(neg_data_list, batch_size=200)
         neg_batch = iter(neg_loader)
         neg_score = None
         for data in neg_batch:
+            # Removed data.edge_index
             neg_score = self.link_score(
-                data.x, data.z, data.edge_index.to(self.device), data.batch
+                data.x, data.z, data.batch
             )
 
         return torch.Tensor(pos_score), torch.Tensor(neg_score)
