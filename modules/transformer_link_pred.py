@@ -18,7 +18,7 @@ class TransformerLinkPred(torch.nn.Module):
             dropout=dropout,
             batch_first=True 
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers, enable_nested_tensor=False)
         
         # 3. Readout & MLP
         self.mlp = nn.Sequential(
