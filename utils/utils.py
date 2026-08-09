@@ -89,38 +89,104 @@ def relabel_enclosing_subgraph(nodes, src_node, dst_node, edge_index):
     )
 
 
+# def drnl_node_labeling(src, dst, edge_index, num_nodes=None):
+#     src, dst = (dst, src) if src > dst else (src, dst)
+#     edge_index = torch.cat([edge_index, edge_index.flip(0)], 1)
+#     adj = to_scipy_sparse_matrix(edge_index, num_nodes=num_nodes).tocsr()
+
+#     idx = list(range(src)) + list(range(src + 1, adj.shape[0]))
+#     # adj without src
+#     adj_wo_src = adj[idx, :][:, idx]
+
+#     idx = list(range(dst)) + list(range(dst + 1, adj.shape[0]))
+#     # adj without dst
+#     adj_wo_dst = adj[idx, :][:, idx]
+
+#     dist2src = shortest_path(adj_wo_dst, directed=False, unweighted=True, indices=src)
+#     dist2src = np.insert(dist2src, dst, 0, axis=0)
+#     dist2src = torch.from_numpy(dist2src)
+
+#     dist2dst = shortest_path(
+#         adj_wo_src, directed=False, unweighted=True, indices=dst - 1
+#     )
+#     dist2dst = np.insert(dist2dst, src, 0, axis=0)
+#     dist2dst = torch.from_numpy(dist2dst)
+
+#     dist = dist2src + dist2dst
+#     dist_over_2, dist_mod_2 = torch.div(dist, 2, rounding_mode="floor"), dist % 2
+
+#     z = 1 + torch.min(dist2src, dist2dst)
+#     z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1)
+#     z[src] = 1.0
+#     z[dst] = 1.0
+#     z[torch.isnan(z)] = 0.0
+
+#     return z.to(torch.long)
+
 def drnl_node_labeling(src, dst, edge_index, num_nodes=None):
+    # Ensure consistent ordering
     src, dst = (dst, src) if src > dst else (src, dst)
+    
+    # Make the graph undirected
     edge_index = torch.cat([edge_index, edge_index.flip(0)], 1)
-    adj = to_scipy_sparse_matrix(edge_index, num_nodes=num_nodes).tocsr()
+    
+    # Dynamically resolve number of nodes if not provided
+    if num_nodes is None:
+        num_nodes = int(edge_index.max().item() + 1) if edge_index.numel() > 0 else max(src, dst) + 1
+        
+    # 1. Create a dense boolean adjacency matrix for rapid parallel lookup
+    adj = torch.zeros((num_nodes, num_nodes), dtype=torch.bool, device=edge_index.device)
+    adj[edge_index[0], edge_index[1]] = True
+    
+    def get_shortest_path(start_node, exclude_node):
+        dist = torch.full((num_nodes,), float('inf'), device=edge_index.device)
+        dist[start_node] = 0.0
+        
+        visited = torch.zeros(num_nodes, dtype=torch.bool, device=edge_index.device)
+        visited[exclude_node] = True
+        visited[start_node] = True
+        
+        current_frontier = torch.zeros(num_nodes, dtype=torch.bool, device=edge_index.device)
+        current_frontier[start_node] = True
+        
+        # PyTorch-Native Breadth-First Search (BFS)
+        for d in range(1, num_nodes):
+            if not current_frontier.any():
+                break
+            
+            # Vectorized neighbor discovery 
+            next_frontier = adj[current_frontier].any(dim=0)
+            
+            # Remove already visited nodes
+            next_frontier = next_frontier & ~visited
+            
+            if not next_frontier.any():
+                break
+                
+            dist[next_frontier] = float(d)
+            visited |= next_frontier
+            current_frontier = next_frontier
+            
+        return dist
 
-    idx = list(range(src)) + list(range(src + 1, adj.shape[0]))
-    # adj without src
-    adj_wo_src = adj[idx, :][:, idx]
-
-    idx = list(range(dst)) + list(range(dst + 1, adj.shape[0]))
-    # adj without dst
-    adj_wo_dst = adj[idx, :][:, idx]
-
-    dist2src = shortest_path(adj_wo_dst, directed=False, unweighted=True, indices=src)
-    dist2src = np.insert(dist2src, dst, 0, axis=0)
-    dist2src = torch.from_numpy(dist2src)
-
-    dist2dst = shortest_path(
-        adj_wo_src, directed=False, unweighted=True, indices=dst - 1
-    )
-    dist2dst = np.insert(dist2dst, src, 0, axis=0)
-    dist2dst = torch.from_numpy(dist2dst)
-
+    # 2. Compute distances independently
+    dist2src = get_shortest_path(src, dst)
+    dist2dst = get_shortest_path(dst, src)
+    
     dist = dist2src + dist2dst
-    dist_over_2, dist_mod_2 = torch.div(dist, 2, rounding_mode="floor"), dist % 2
-
-    z = 1 + torch.min(dist2src, dist2dst)
-    z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1)
+    
+    # 3. Compute DRNL equation
+    dist_over_2 = torch.div(dist, 2, rounding_mode="floor")
+    dist_mod_2 = dist % 2
+    
+    z = 1.0 + torch.min(dist2src, dist2dst)
+    z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1.0)
+    
+    # 4. Enforce strict labeling constraints
     z[src] = 1.0
     z[dst] = 1.0
-    z[torch.isnan(z)] = 0.0
-
+    z[torch.isinf(z) | torch.isnan(z)] = 0.0
+    
     return z.to(torch.long)
 
 
