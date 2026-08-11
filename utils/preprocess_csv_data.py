@@ -1,38 +1,26 @@
+import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import argparse
 
 
-def preprocess(data_name):
-    u_list, i_list, ts_list, label_list = [], [], [], []
-    feat_l = []
-    idx_list = []
-    edge_idx = 0
+def preprocess(data_path):
+    # Read CSV directly
+    df_csv = pd.read_csv(data_path)
 
-    with open(data_name) as f:
-        next(f)
-        for idx, line in enumerate(f):
-            e = line.strip().split(",")
-            u = int(e[0])
-            i = int(e[1])
+    # Only keep rows with known destination
+    df_csv = df_csv[df_csv["dst"].notna()]
 
-            if i == u:
-                continue
+    u_list = df_csv["src"].astype(int).tolist()
+    i_list = df_csv["dst"].astype(int).tolist()
+    ts_list = df_csv["ts"].astype(float).tolist()
+    label_list = [1] * len(df_csv)
+    idx_list = list(range(len(df_csv)))
 
-            ts = float(e[2])
-            label = 1
+    # No edge features → use dummy vector
+    feat_l = [np.zeros(1) for _ in range(len(df_csv))]
 
-            feat = np.array([float(x) for x in e[3:]])
-
-            u_list.append(u)
-            i_list.append(i)
-            ts_list.append(ts)
-            label_list.append(label)
-            idx_list.append(edge_idx)
-            edge_idx += 1
-
-            feat_l.append(feat)
     return pd.DataFrame(
         {"u": u_list, "i": i_list, "ts": ts_list, "label": label_list, "idx": idx_list}
     ), np.array(feat_l)
@@ -77,15 +65,17 @@ def run(data_name, bipartite=True):
     OUT_NODE_FEAT = "./data/ml_{}_node.npy".format(data_name)
 
     df, feat = preprocess(PATH)
+    df = df.sort_values(by="ts").reset_index(drop=True)
     new_df = reindex(df, bipartite)
 
+    # Add a dummy first edge feature
     empty = np.zeros(feat.shape[1])[np.newaxis, :]
     feat = np.vstack([empty, feat])
 
     max_idx = max(new_df.u.max(), new_df.i.max())
-    rand_feat = np.zeros((max_idx + 1, 172))
+    rand_feat = np.zeros((max_idx + 1, 172))  # node features
 
-    new_df.to_csv(OUT_DF)
+    new_df.to_csv(OUT_DF, index=False)
     np.save(OUT_FEAT, feat)
     np.save(OUT_NODE_FEAT, rand_feat)
 
