@@ -369,24 +369,19 @@ class TGN(torch.nn.Module):
 
         # --- POSITIVE SAMPLES ---
         pos_loader = DataLoader(pos_data_list, batch_size=self.batch_size)
-        pos_score = None
+        pos_scores = []
         for data in pos_loader:
-            # 1. Move the entire data batch (including z and batch) to the GPU
             data = data.to(self.device) 
-            
-            # 2. Pass to the transformer
-            pos_score = self.link_score(data.x, data.z, data.batch)
+            pos_scores.append(self.link_score(data.x, data.z, data.batch))
+        pos_score = torch.cat(pos_scores, dim=0) if pos_scores else torch.empty(0, device=self.device)
 
         # --- NEGATIVE SAMPLES ---
-        # Note: I updated this to use self.batch_size instead of the hardcoded 200
         neg_loader = DataLoader(neg_data_list, batch_size=self.batch_size) 
-        neg_score = None
+        neg_scores = []
         for data in neg_loader:
-            # 1. Move the entire data batch to the GPU
             data = data.to(self.device)
-            
-            # 2. Pass to the transformer
-            neg_score = self.link_score(data.x, data.z, data.batch)
+            neg_scores.append(self.link_score(data.x, data.z, data.batch))
+        neg_score = torch.cat(neg_scores, dim=0) if neg_scores else torch.empty(0, device=self.device)
 
         return pos_score, neg_score
 
