@@ -2,7 +2,8 @@ import pickle
 
 import matplotlib.pyplot as plt
 
-DATASET = "email1"
+AVAILABLE_DATASET = ["calls", "CollegeMsg-2m", "email1", "email2", "email3", "email4"]
+DATASET = AVAILABLE_DATASET[0]
 
 
 def read_file(file_name):
@@ -13,56 +14,39 @@ def read_file(file_name):
 models = [
     {"file_path": f"./results/dyrep-rnn-{DATASET}.pkl", "name": "DyRep"},
     {"file_path": f"./results/jodie-rnn-{DATASET}.pkl", "name": "Jodie"},
+    {"file_path": f"./results/tgat-{DATASET}.pkl", "name": "TGAT"},
     {"file_path": f"./results/tgn-id-{DATASET}.pkl", "name": "TGN-id"},
     {"file_path": f"./results/tgn-no-mem-{DATASET}.pkl", "name": "TGN-no-mem"},
     {"file_path": f"./results/tgn-time-{DATASET}.pkl", "name": "TGN-time"},
     {"file_path": f"./results/tgn-seal-{DATASET}-2h.pkl", "name": "TGN-seal-2h"},
+    # {"file_path": f"./results/tgn-seal-{DATASET}-3h.pkl", "name": "TGN-seal-3h"},
 ]
 
-# =========================================
+
+def plot_metric(metric_key, ylabel, title):
+    max_epochs = 0
+    plt.figure(figsize=(10, 6))
+    for m in models:
+        res = read_file(m["file_path"])
+        values = res[metric_key]
+        epochs = range(1, len(values) + 1)
+        max_epochs = max(len(values), max_epochs)
+        plt.plot(epochs, values, label=m["name"], linewidth=2)
+
+    plt.xlabel("Epoch")
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.legend()
+    plt.tight_layout()
+    plt.xticks(range(1, max_epochs + 1))
+    plt.show()
+
+
 # Plot 1 — Validation AP (Seen Nodes)
-# =========================================
-plt.figure(figsize=(9, 6))
+plot_metric("val_aps", "Validation AP", "Validation AP (Seen Nodes)")
 
-for m in models:
-    res = read_file(m["file_path"])
-    epochs = range(1, len(res['val_aps']) + 1)
-    plt.plot(epochs, res['val_aps'], label=m["name"])
-
-plt.xlabel("Epoch")
-plt.ylabel("Validation AP")
-plt.title("Validation AP (Seen Nodes)")
-plt.legend()
-plt.show()
-
-# =========================================
 # Plot 2 — Validation AP (New Nodes)
-# =========================================
-plt.figure(figsize=(9, 6))
+plot_metric("new_nodes_val_aps", "Validation AP", "Validation AP (New Nodes)")
 
-for m in models:
-    res = read_file(m["file_path"])
-    epochs = range(1, len(res['new_nodes_val_aps']) + 1)
-    plt.plot(epochs, res['new_nodes_val_aps'], label=m["name"])
-
-plt.xlabel("Epoch")
-plt.ylabel("Validation AP")
-plt.title("Validation AP (New Nodes)")
-plt.legend()
-plt.show()
-
-# =========================================
 # Plot 3 — Training Loss
-# =========================================
-plt.figure(figsize=(9, 6))
-
-for m in models:
-    res = read_file(m["file_path"])
-    epochs = range(1, len(res['train_losses']) + 1)
-    plt.plot(epochs, res['train_losses'], label=m["name"])
-
-plt.xlabel("Epoch")
-plt.ylabel("Training Loss")
-plt.title("Training Loss Comparison")
-plt.legend()
-plt.show()
+plot_metric("train_losses", "Training Loss", "Training Loss Comparison")

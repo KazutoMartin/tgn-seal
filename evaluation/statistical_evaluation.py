@@ -9,20 +9,25 @@ from utils.build_result_paths import build_models_result_paths
 # Configuration
 # =====================================================
 
-NUM_RUNS = 10
-DATASET = "email1"
+NUM_RUNS = 1
+AVAILABLE_DATASET = ["calls", "CollegeMsg-2m", "email1", "email2", "email3", "email4"]
+DATASET = AVAILABLE_DATASET[0]
 
-AP_KEY = "val_aps"
+AVAILABLE_KEY = ["val_aps", "new_nodes_val_aps"]
+AP_KEY = AVAILABLE_KEY[0]
 MODE = "mean"
-ALPHA = 0.05
+ALPHA = 0.01
 
 models = {
     "DyRep": ("dyrep", "rnn", None),
     "JODIE": ("jodie", "rnn", None),
+    "TGAT": ("tgat", None, None),
     "TGN_NoMem": ("tgn", "no-mem", None),
     "TGN_Id": ("tgn", "id", None),
     "TGN_Time": ("tgn", "time", None),
     "TGN_SEAL": ("tgn", "seal", "2h"),
+    # "TGN_SEAL": ("tgn", "seal-attn", "2h"),
+    # "TGN_SEAL_3": ("tgn", "seal", "3h"),
 }
 
 results = build_models_result_paths(DATASET, NUM_RUNS, models)
@@ -55,6 +60,16 @@ def collect_model_aps(file_list, mode):
     ])
 
 
+def extract_training_stats(res):
+    epoch_times = np.asarray(res["epoch_times"], dtype=float)
+
+    num_epochs = len(epoch_times)
+    mean_epoch_time = epoch_times.mean()
+    total_training_time = epoch_times.sum()
+
+    return mean_epoch_time, total_training_time, num_epochs
+
+
 # =====================================================
 # Main Evaluation
 # =====================================================
@@ -79,12 +94,12 @@ def main():
     # Statistical comparison
     print("\n" + "=" * 60)
     print("Paired Wilcoxon Signed-Rank Test")
-    print("H1: TGN-Time > Baseline")
+    print("H1: TGN-SEAL > Baseline")
     print("=" * 60 + "\n")
 
     tgn_seal_ap = model_aps["TGN_SEAL"]
 
-    for baseline in ["DyRep", "JODIE", "TGN_NoMem", "TGN_Id", "TGN_Time"]:
+    for baseline in ["DyRep", "JODIE", "TGAT", "TGN_NoMem", "TGN_Id", "TGN_Time"]:
         baseline_ap = model_aps[baseline]
 
         stat, p_value = wilcoxon(
@@ -99,6 +114,34 @@ def main():
         print(f"  p-value      : {p_value:.4e}")
         print(f"  significant? : {significant}")
         print("-" * 45)
+
+    training_stats = {}
+
+    for name, paths in results.items():
+        stats = np.array([
+            extract_training_stats(read_pickle(p))
+            for p in paths
+        ])
+
+        training_stats[name] = {
+            "epoch_time": stats[:, 0],
+            "total_time": stats[:, 1],
+            "num_epochs": stats[:, 2],
+        }
+
+    print("\n" + "=" * 75)
+    print("Training Time Statistics")
+    print("=" * 75)
+
+    for name, stats in training_stats.items():
+        epoch_time = stats["epoch_time"]
+        total_time = stats["total_time"]
+        num_epochs = stats["num_epochs"]
+
+        print(f"\n{name}")
+        print(f"  Mean epoch time  : {epoch_time.mean():.4f} ± {epoch_time.std():.4f} sec")
+        print(f"  Mean total time  : {total_time.mean():.2f} ± {total_time.std():.2f} sec")
+        print(f"  Mean # epochs    : {num_epochs.mean():.2f} ± {num_epochs.std():.2f}")
 
 
 if __name__ == "__main__":
