@@ -203,7 +203,7 @@ def get_node_max_ts(source_nodes, edge_times, edge_index, timestamp):
     return np.array(nodes_ts)
 
 
-def get_neighbor_finder(data, uniform, max_node_idx=None):
+def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=False):
     max_node_idx = (
         max(data.sources.max(), data.destinations.max())
         if max_node_idx is None
@@ -216,8 +216,7 @@ def get_neighbor_finder(data, uniform, max_node_idx=None):
         adj_list[source].append((destination, edge_idx, timestamp))
         adj_list[destination].append((source, edge_idx, timestamp))
 
-    return NeighborFinder(adj_list, uniform=uniform)
-
+    return NeighborFinder(adj_list, uniform=uniform, use_layered_cache=use_layered_cache)
 
 
 
@@ -316,8 +315,164 @@ class TemporalSubgraphCache:
         self.cache_hits = 0       
         self.cache_misses = 0
 
+
+class MultiLayerTemporalCache:
+    def __init__(self, ttl_window=86400, max_edges_per_hop={1: 20, 2: 60, 3: 180}):
+        self.ttl_window = ttl_window
+        self.max_edges_per_hop = max_edges_per_hop
+        self.subgraph_cache = {}  
+        self.ttl_tracker = {}     
+        self.cache_hits = 0       
+        self.cache_misses = 0
+
+    def _init_node_cache(self):
+        """Initializes deques partitioned by hop layer for a specific node."""
+        node_cache = {}
+        for hop, max_e in self.max_edges_per_hop.items():
+            max_n = max_e * 2
+            node_cache[hop] = {
+                'nodes': deque(maxlen=max_n),
+                'edge_idxs': deque(maxlen=max_e),
+                'edge_times': deque(maxlen=max_e),
+                'edge_index_0': deque(maxlen=max_e),
+                'edge_index_1': deque(maxlen=max_e)
+            }
+        return node_cache
+
+    def get_subgraph(self, node_id, timestamp, neighbor_finder, y, hop, n_neighbors):
+        #1. Cache Hit Logic
+        if node_id in self.ttl_tracker and (0 <= timestamp - self.ttl_tracker[node_id] <= self.ttl_window):
+            self.cache_hits += 1
+            cache = self.subgraph_cache[node_id]
+            
+            # Find which hops actually exist in the cache for this node
+            active_hops = [h for h in range(1, hop + 1) if h in cache]
+            
+            # Calculate exact total sizes upfront (Nodes vs. Edges)
+            total_nodes = sum(len(cache[h]['nodes']) for h in active_hops)
+            total_edges = sum(len(cache[h]['edge_idxs']) for h in active_hops)
+            
+            # Pre-allocate fixed-size NumPy arrays 
+            nodes = np.empty(total_nodes, dtype=np.int64)
+            edge_idxs = np.empty(total_edges, dtype=np.int64)
+            edge_times = np.empty(total_edges, dtype=np.float32)
+            ei_0 = np.empty(total_edges, dtype=np.int64)
+            ei_1 = np.empty(total_edges, dtype=np.int64)
+            
+            # Fill the arrays using dual moving pointers (Slice Assignment)
+            n_ptr = 0
+            e_ptr = 0
+            
+            for h in active_hops:
+                n_len = len(cache[h]['nodes'])
+                e_len = len(cache[h]['edge_idxs'])
+                
+                # Assign nodes
+                if n_len > 0:
+                    next_n_ptr = n_ptr + n_len
+                    nodes[n_ptr:next_n_ptr] = cache[h]['nodes']
+                    n_ptr = next_n_ptr
+                    
+                # Assign edges
+                if e_len > 0:
+                    next_e_ptr = e_ptr + e_len
+                    
+                    edge_idxs[e_ptr:next_e_ptr] = cache[h]['edge_idxs']
+                    edge_times[e_ptr:next_e_ptr] = cache[h]['edge_times']
+                    ei_0[e_ptr:next_e_ptr] = cache[h]['edge_index_0']
+                    ei_1[e_ptr:next_e_ptr] = cache[h]['edge_index_1']
+                    
+                    e_ptr = next_e_ptr
+                    
+            return {
+                'nodes': nodes,
+                'edge_idxs': edge_idxs,
+                'edge_times': edge_times,
+                'edge_index': [ei_0.tolist(), ei_1.tolist()] 
+            }
+        # 2. Cache Miss Logic
+        self.cache_misses += 1
+        layered_neighbors = neighbor_finder.get_layered_k_hop_temporal_neighbor(
+            [node_id], [timestamp], y, hop, n_neighbors
+        )
+
+        self.subgraph_cache[node_id] = self._init_node_cache()
+        cache = self.subgraph_cache[node_id]
+
+        nodes_all, edge_idxs_all, edge_times_all, ei_0_all, ei_1_all = [], [], [], [], []
+
+        for h in range(1, hop + 1):
+            if h in layered_neighbors:
+                n_nodes, e_idxs, e_times, e_index = layered_neighbors[h]
+                if isinstance(e_index, np.ndarray):
+                    e_index = e_index.tolist()
+
+                n_list = n_nodes.tolist() if isinstance(n_nodes, np.ndarray) else n_nodes
+                e_idxs_list = e_idxs.tolist() if isinstance(e_idxs, np.ndarray) else e_idxs
+                e_times_list = e_times.tolist() if isinstance(e_times, np.ndarray) else e_times
+                
+                if h in cache:
+                    cache[h]['nodes'].extend(n_list)
+                    cache[h]['edge_idxs'].extend(e_idxs_list)
+                    cache[h]['edge_times'].extend(e_times_list)
+                    cache[h]['edge_index_0'].extend(e_index[0])
+                    cache[h]['edge_index_1'].extend(e_index[1])
+
+                nodes_all.extend(n_list)
+                edge_idxs_all.extend(e_idxs_list)
+                edge_times_all.extend(e_times_list)
+                ei_0_all.extend(e_index[0])
+                ei_1_all.extend(e_index[1])
+
+        self.ttl_tracker[node_id] = timestamp
+        
+        return {
+            'nodes': np.array(nodes_all, dtype=np.int64),
+            'edge_idxs': np.array(edge_idxs_all, dtype=np.int64),
+            'edge_times': np.array(edge_times_all, dtype=np.float32),
+            'edge_index': [ei_0_all, ei_1_all]
+        }
+
+    def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=3, n_neighbors=10):
+        visited = set([src, dst])
+        current_frontier = set([src, dst])
+        
+        # Route new interactions strictly to the cache layer corresponding to the hop distance
+        for current_hop in range(1, hop + 1):
+            for node in current_frontier:
+                if node in self.ttl_tracker and (ts - self.ttl_tracker[node] <= self.ttl_window):
+                    if current_hop in self.subgraph_cache[node]:
+                        cache_layer = self.subgraph_cache[node][current_hop]
+                        cache_layer['nodes'].extend([src, dst])
+                        cache_layer['edge_times'].append(ts)
+                        cache_layer['edge_idxs'].append(edge_idx)
+                        cache_layer['edge_index_0'].append(src)
+                        cache_layer['edge_index_1'].append(dst)
+                        self.ttl_tracker[node] = ts
+
+            if current_hop < hop:
+                next_frontier = set()
+                for node in current_frontier:
+                    neighbors, _, _ = neighbor_finder.find_before(node, ts)
+                    if len(neighbors) > n_neighbors:
+                        neighbors = neighbors[-n_neighbors:]
+                        
+                    new_neighbors = set(neighbors) - visited
+                    next_frontier.update(new_neighbors)
+                    visited.update(new_neighbors)
+                    
+                current_frontier = next_frontier
+                if not current_frontier:
+                    break
+
+    def reset_cache(self):
+        self.subgraph_cache = {}  
+        self.ttl_tracker = {}     
+        self.cache_hits = 0       
+        self.cache_misses = 0
+
 class NeighborFinder:
-    def __init__(self, adj_list, uniform=False, seed=None):
+    def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False):
         self.node_to_neighbors = []
         self.node_to_edge_idxs = []
         self.node_to_edge_timestamps = []
@@ -338,7 +493,10 @@ class NeighborFinder:
             self.seed = seed
             self.random_state = np.random.RandomState(self.seed)
 
-        self.cache = TemporalSubgraphCache()
+        if use_layered_cache:
+            self.cache = MultiLayerTemporalCache()
+        else:
+            self.cache = TemporalSubgraphCache()
 
     def find_before(self, src_idx, cut_time):
         """
@@ -580,3 +738,29 @@ class NeighborFinder:
             data_list.append(data)
 
         return data_list
+    def get_layered_k_hop_temporal_neighbor(
+        self, source_nodes, timestamps, y, hop=3, n_neighbors=10
+    ):
+        """
+        Recursively extracts temporal neighborhoods separated by hop level.
+        Returns a dictionary mapping hop depth -> (neighbors, edge_idxs, edge_times, edge_index)
+        """
+        assert hop >= 1
+
+        neighbors, edge_idxs, edge_times, edge_index = (
+            self.get_temporal_neighbor_coo_format(
+                source_nodes, timestamps, y, n_neighbors
+            )
+        )
+
+        result = {1: (neighbors, edge_idxs, edge_times, edge_index)}
+
+        if hop > 1 and len(neighbors) > 0:
+            sub_layered = self.get_layered_k_hop_temporal_neighbor(
+                neighbors, edge_times, y, hop - 1, n_neighbors
+            )
+            for sub_hop, data in sub_layered.items():
+                result[sub_hop + 1] = data
+
+        return result
+

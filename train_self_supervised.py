@@ -134,9 +134,11 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--use_cache", action="store_true", help="Enable the incremental push cache"
+    "--use_cache", action="store_true", help="Enable the flat incremental push cache"
 )
-
+parser.add_argument(
+    "--use_layered_cache", action="store_true", help="Enable the multi-layer hop-partitioned cache"
+)
 try:
     args = parser.parse_args()
 except:
@@ -158,7 +160,8 @@ TIME_DIM = args.time_dim
 USE_MEMORY = args.use_memory
 MESSAGE_DIM = args.message_dim
 MEMORY_DIM = args.memory_dim
-USE_CACHE = args.use_cache
+USE_CACHE = args.use_cache or args.use_layered_cache
+USE_LAYERED_CACHE = args.use_layered_cache
 
 Path("./saved_models/").mkdir(parents=True, exist_ok=True)
 Path("./saved_checkpoints/").mkdir(parents=True, exist_ok=True)
@@ -200,11 +203,13 @@ logger.info(args)
 )
 
 # Initialize training neighbor finder to retrieve temporal graph
-train_ngh_finder = get_neighbor_finder(train_data, args.uniform)
-
+train_ngh_finder = get_neighbor_finder(
+    train_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE
+)
 # Initialize validation and test neighbor finder to retrieve temporal graph
-full_ngh_finder = get_neighbor_finder(full_data, args.uniform)
-
+full_ngh_finder = get_neighbor_finder(
+    full_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE
+)
 # Initialize negative samplers. Set seeds for validation and testing so negatives are the same
 # across different runs
 # NB: in the inductive setting, negatives are sampled only amongst other new nodes
