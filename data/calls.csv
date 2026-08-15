@@ -1,4 +1,4 @@
-node,src,node,dst,ts,duration
+node src,node dst,timestamp,duration
 82,8158,1074478845,91
 82,8158,1074479129,376
 100,5103,1080035732,30
