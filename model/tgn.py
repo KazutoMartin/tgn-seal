@@ -349,11 +349,11 @@ class TGN(torch.nn.Module):
         #     neg_data_list = future_neg.result()
 
         pos_data_list = self.neighbor_finder.extract_enclosing_subgraph(
-            source_nodes, destination_nodes, edge_times, y=1, hop=3, n_neighbors=10, use_cache=self.use_cache
+            source_nodes, destination_nodes, edge_times, y=1, hop=2, n_neighbors=10, use_cache=self.use_cache
         )
 
         neg_data_list = self.neighbor_finder.extract_enclosing_subgraph(
-            source_nodes, negative_nodes, edge_times, y=0, hop=3, n_neighbors=10, use_cache=self.use_cache
+            source_nodes, negative_nodes, edge_times, y=0, hop=2, n_neighbors=10, use_cache=self.use_cache
         )
 
         pos_data_list, neg_data_list = self.compute_temporal_embeddings(

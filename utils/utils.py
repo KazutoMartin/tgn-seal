@@ -274,7 +274,7 @@ class TemporalSubgraphCache:
             'edge_index': [list(subgraph_data['edge_index_0']), list(subgraph_data['edge_index_1'])]
         }
 
-    def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=3, n_neighbors=10):
+    def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=2, n_neighbors=10):
         affected_nodes = set([src, dst])
 
         if hop - 1 > 0:
@@ -433,7 +433,7 @@ class MultiLayerTemporalCache:
             'edge_index': [ei_0_all, ei_1_all]
         }
 
-    def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=3, n_neighbors=10):
+    def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=2, n_neighbors=10):
         visited = set([src, dst])
         current_frontier = set([src, dst])
         
@@ -631,7 +631,7 @@ class NeighborFinder:
         return neighbors, edge_idxs, edge_times, edge_index
 
     def get_k_hop_temporal_neighbor(
-        self, source_nodes, timestamps, y, hop=3, n_neighbors=10
+        self, source_nodes, timestamps, y, hop=2, n_neighbors=10
     ):
         assert hop >= 1
 
@@ -659,7 +659,7 @@ class NeighborFinder:
             return neighbors, edge_idxs, edge_times, edge_index
 
     def extract_enclosing_subgraph(
-        self, src_nodes, dst_nodes, edge_times, y, hop=3, n_neighbors=10, use_cache=False
+        self, src_nodes, dst_nodes, edge_times, y, hop=2, n_neighbors=10, use_cache=False
     ):
         data_list = []
 
@@ -739,7 +739,7 @@ class NeighborFinder:
 
         return data_list
     def get_layered_k_hop_temporal_neighbor(
-        self, source_nodes, timestamps, y, hop=3, n_neighbors=10
+        self, source_nodes, timestamps, y, hop=2, n_neighbors=10
     ):
         """
         Recursively extracts temporal neighborhoods separated by hop level.
