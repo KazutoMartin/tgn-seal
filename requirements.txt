@@ -1,9 +1,19 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+# Core Machine Learning & Graph Libraries
+torch>=2.2.0
+torch_geometric>=2.5.0
+
+# Scientific & Data Processing
+numpy
+scipy
+
 scipy
 pandas
 numpy
-torch
+# torch
 torchvision
 torchaudio
-torch_geometric
+# torch_geometric
 matplotlib
 scikit-learn
