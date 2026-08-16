@@ -42,14 +42,14 @@ from datetime import datetime
 from pathlib import Path
 
 # Base configs per architecture group (baseline/no-cache variants excluded --
-# already evaluated). Each entry here is expanded into a --use_cache and a
-# --use_layered_cache run by build_variant().
+# already evaluated). Each entry here is expanded into cache x hop variants
+# by build_variant().
 #
 # Dataset names match the files actually present under data/ (ml_<name>.csv):
 #   calls, CollegeMsg, email-Eu-core-temporal-Dept1..4
 # wiki-talk-2y is not available and has been removed from every group that
-# used it (JODIE, TGN_ID, TGN_SEAL). The old "sms" slot now uses "calls" --
-# confirm this mapping is correct.
+# used it (JODIE, TGN_ID, TGN_SEAL). "calls" is its own dataset, confirmed
+# NOT equivalent to the old "sms" slot.
 EXPERIMENT_GROUPS = {
     "DYREP": [
         "-d email-Eu-core-temporal-Dept2 --use_memory --memory_updater rnn --dyrep --use_destination_embedding_in_message --prefix dyrep-rnn-dept2 --n_runs 10 --n_epoch 50",

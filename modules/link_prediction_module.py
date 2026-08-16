@@ -83,7 +83,6 @@ class GIN(torch.nn.Module):
         z_emb = fn.one_hot(z, self.max_z).to(torch.float).to(device)
         x = torch.cat([z_emb, x.to(torch.float)], 1)
 
-        x = torch.cat([z_emb, x.to(torch.float)], 1)
         x = self.conv1(x, edge_index)
         xs = [x]
         for conv in self.convs:
