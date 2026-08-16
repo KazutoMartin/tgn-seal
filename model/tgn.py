@@ -46,11 +46,13 @@ class TGN(torch.nn.Module):
         link_pred_module_type="dgcnn",
         max_z=100,
         batch_size=200,
-        use_cache=False
+        use_cache=False,
+        n_hops=2
     ):
         super(TGN, self).__init__()
 
         self.batch_size = batch_size
+        self.n_hops = n_hops
 
         self.n_layers = n_layers
         self.neighbor_finder = neighbor_finder
@@ -141,14 +143,22 @@ class TGN(torch.nn.Module):
         )
 
         self.link_pred_module_type = link_pred_module_type
-        self.link_score = TransformerLinkPred(
-            in_channels=self.n_node_features,
-            hidden_channels=32, # Configurable
-            num_layers=2,       # Configurable
-            max_z=max_z,
-            num_heads=2,        # Configurable
-            dropout=dropout
-        )
+        if link_pred_module_type == "transformer":
+            self.link_score = TransformerLinkPred(
+                in_channels=self.n_node_features,
+                hidden_channels=32, # Configurable
+                num_layers=2,       # Configurable
+                max_z=max_z,
+                num_heads=2,        # Configurable
+                dropout=dropout
+            )
+        else:
+            # Legacy decoders (dgcnn/gin/sage/gcn/merge) from link_prediction_module.py
+            self.link_score = get_link_pred_module(
+                module_type=link_pred_module_type,
+                num_features=self.n_node_features,
+                max_z=max_z,
+            )
 
         self.use_cache = use_cache
 
@@ -349,11 +359,11 @@ class TGN(torch.nn.Module):
         #     neg_data_list = future_neg.result()
 
         pos_data_list = self.neighbor_finder.extract_enclosing_subgraph(
-            source_nodes, destination_nodes, edge_times, y=1, hop=2, n_neighbors=10, use_cache=self.use_cache
+            source_nodes, destination_nodes, edge_times, y=1, hop=self.n_hops, n_neighbors=10, use_cache=self.use_cache
         )
 
         neg_data_list = self.neighbor_finder.extract_enclosing_subgraph(
-            source_nodes, negative_nodes, edge_times, y=0, hop=2, n_neighbors=10, use_cache=self.use_cache
+            source_nodes, negative_nodes, edge_times, y=0, hop=self.n_hops, n_neighbors=10, use_cache=self.use_cache
         )
 
         pos_data_list, neg_data_list = self.compute_temporal_embeddings(
@@ -367,12 +377,17 @@ class TGN(torch.nn.Module):
             n_neighbors,
         )
 
+        use_transformer_decoder = self.link_pred_module_type == "transformer"
+
         # --- POSITIVE SAMPLES ---
         pos_loader = DataLoader(pos_data_list, batch_size=self.batch_size)
         pos_scores = []
         for data in pos_loader:
-            data = data.to(self.device) 
-            pos_scores.append(self.link_score(data.x, data.z, data.batch))
+            data = data.to(self.device)
+            if use_transformer_decoder:
+                pos_scores.append(self.link_score(data.x, data.z, data.batch))
+            else:
+                pos_scores.append(self.link_score(data.x, data.z, data.edge_index, data.batch))
         pos_score = torch.cat(pos_scores, dim=0) if pos_scores else torch.empty(0, device=self.device)
 
         # --- NEGATIVE SAMPLES ---
@@ -380,7 +395,10 @@ class TGN(torch.nn.Module):
         neg_scores = []
         for data in neg_loader:
             data = data.to(self.device)
-            neg_scores.append(self.link_score(data.x, data.z, data.batch))
+            if use_transformer_decoder:
+                neg_scores.append(self.link_score(data.x, data.z, data.batch))
+            else:
+                neg_scores.append(self.link_score(data.x, data.z, data.edge_index, data.batch))
         neg_score = torch.cat(neg_scores, dim=0) if neg_scores else torch.empty(0, device=self.device)
 
         return pos_score, neg_score

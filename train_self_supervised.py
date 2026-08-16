@@ -2,6 +2,7 @@ import argparse
 import logging
 import math
 import numpy as np
+import os
 import pickle
 import sys
 import time
@@ -128,8 +129,8 @@ parser.add_argument(
 parser.add_argument(
     "--link_pred_module",
     type=str,
-    default="dgcnn",
-    choices=["dgcnn", "gin", "sage", "gcn", "merge"],
+    default="transformer",
+    choices=["transformer", "dgcnn", "gin", "sage", "gcn", "merge"],
     help="Type of link prediction module",
 )
 
@@ -138,6 +139,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--use_layered_cache", action="store_true", help="Enable the multi-layer hop-partitioned cache"
+)
+parser.add_argument(
+    "--n_hops", type=int, default=2, help="Number of hops for the enclosing subgraph passed to the link predictor"
 )
 try:
     args = parser.parse_args()
@@ -228,7 +232,16 @@ device_string = "cuda:{}".format(GPU) if torch.cuda.is_available() else "cpu"
 device = torch.device(device_string)
 
 if device.type == "cuda":
-    print(f"GPU:{torch.cuda.get_device_name(0)}")
+    logger.info(
+        "Using GPU: {} (device_string={}, CUDA_VISIBLE_DEVICES={})".format(
+            torch.cuda.get_device_name(0), device_string, os.environ.get("CUDA_VISIBLE_DEVICES", "<not set>")
+        )
+    )
+else:
+    logger.warning(
+        "CUDA NOT AVAILABLE -- running on CPU. This will be far slower and will "
+        "invalidate any cache-speedup timing comparison for this run."
+    )
 
 # Compute time statistics
 mean_time_shift_src, std_time_shift_src, mean_time_shift_dst, std_time_shift_dst = (
@@ -272,7 +285,8 @@ for i in range(args.n_runs):
         dyrep=args.dyrep,
         link_pred_module_type=args.link_pred_module,
         batch_size=BATCH_SIZE,
-        use_cache=USE_CACHE
+        use_cache=USE_CACHE,
+        n_hops=args.n_hops
     )
     criterion = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(tgn.parameters(), lr=LEARNING_RATE)
