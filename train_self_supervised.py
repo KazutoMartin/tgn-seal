@@ -303,6 +303,7 @@ for i in range(args.n_runs):
     val_aps = []
     epoch_times = []
     total_epoch_times = []
+    cache_hit_rates = []
     train_losses = []
 
     early_stopper = EarlyStopMonitor(max_round=args.patience)
@@ -394,8 +395,10 @@ for i in range(args.n_runs):
             misses = train_ngh_finder.cache.cache_misses
             total_queries = hits + misses
             if total_queries > 0:
+                epoch_hit_rate = hits / total_queries
+                cache_hit_rates.append(epoch_hit_rate)
                 logger.info("Cache Hit Rate: {:.2f}% (Hits: {}, Misses: {})".format(
-                    (hits / total_queries) * 100, hits, misses
+                    epoch_hit_rate * 100, hits, misses
                 ))
 
         ### Validation
@@ -446,6 +449,7 @@ for i in range(args.n_runs):
                 "train_losses": train_losses,
                 "epoch_times": epoch_times,
                 "total_epoch_times": total_epoch_times,
+                "cache_hit_rates": cache_hit_rates,
             },
             open(results_path, "wb"),
         )
@@ -523,6 +527,7 @@ for i in range(args.n_runs):
             "epoch_times": epoch_times,
             "train_losses": train_losses,
             "total_epoch_times": total_epoch_times,
+            "cache_hit_rates": cache_hit_rates,
         },
         open(results_path, "wb"),
     )

@@ -1,0 +1,4 @@
+experiment,dataset,hop,cache_mode,n_runs_found,ap_mean,ap_std,mean_epoch_time_s,mean_total_time_s,cache_hit_rate
+TGN_Time-Dept4,dept4,3hop,layered-cache,1,0.779378704648525,0.0,187.12137603759766,187.12137603759766,0.7322886827140964
+TGN_SEAL-Dept4,dept4,2hop,nocache,1,0.8922493084282,0.0,123.51651120185852,123.51651120185852,
+TGN_SEAL-Dept4,dept4,2hop,cache,1,0.8934559554099347,0.0,85.77742981910706,85.77742981910706,

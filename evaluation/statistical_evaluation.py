@@ -69,6 +69,15 @@ def extract_training_stats(res):
     return epoch_times.mean(), epoch_times.sum(), len(epoch_times)
 
 
+def extract_cache_hit_rate(res):
+    """Mean cache hit rate across epochs. None for nocache runs, or for
+    result files predating this field."""
+    rates = res.get("cache_hit_rates")
+    if not rates:
+        return None
+    return float(np.mean(rates))
+
+
 def paths_for(exp, cache_variant, hop_variant):
     """Reproduce the exact --prefix run_evaluation.py used for this
     experiment/cache/hop combination, then turn it into result paths."""
@@ -122,13 +131,18 @@ def main():
                 results = [read_pickle(p) for p in found]
                 aps = np.array([extract_ap(r, mode=MODE) for r in results])
                 times = np.array([extract_training_stats(r) for r in results])  # [mean_epoch, total, n_epochs]
+                hit_rates = [extract_cache_hit_rate(r) for r in results]
+                hit_rates = [h for h in hit_rates if h is not None]
+                mean_hit_rate = float(np.mean(hit_rates)) if hit_rates else None
 
                 variant_aps[cv] = aps
                 variant_times[cv] = times
 
+                hit_rate_str = f"{mean_hit_rate * 100:.1f}%" if mean_hit_rate is not None else "n/a"
                 print(f"  [{cv:14s}] AP: {aps.mean():.4f} ± {aps.std():.4f}"
                       f"   |  mean epoch time: {times[:, 0].mean():.2f}s"
-                      f"   |  mean total time: {times[:, 1].mean():.2f}s")
+                      f"   |  mean total time: {times[:, 1].mean():.2f}s"
+                      f"   |  cache hit rate: {hit_rate_str}")
 
                 csv_rows.append({
                     "experiment": exp_name,
@@ -140,6 +154,7 @@ def main():
                     "ap_std": aps.std(),
                     "mean_epoch_time_s": times[:, 0].mean(),
                     "mean_total_time_s": times[:, 1].mean(),
+                    "cache_hit_rate": mean_hit_rate if mean_hit_rate is not None else "",
                 })
 
             # Paired comparisons: does caching change AP vs. the nocache baseline, at this hop depth?
