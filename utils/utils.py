@@ -181,10 +181,14 @@ def drnl_node_labeling(src, dst, edge_index, num_nodes=None):
     
     z = 1.0 + torch.min(dist2src, dist2dst)
     z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1.0)
+
+    # --- DIRECTIONAL SHIFT ---
+    # Shift all calculated labels up by 1 to make room for distinct src/dst labels
+    z = z + 1.0
     
     # 4. Enforce strict labeling constraints
     z[src] = 1.0
-    z[dst] = 1.0
+    z[dst] = 2.0
     z[torch.isinf(z) | torch.isnan(z)] = 0.0
     
     return z.to(torch.long)
