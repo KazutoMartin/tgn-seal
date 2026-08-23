@@ -91,12 +91,57 @@ class MeanMessageAggregator(MessageAggregator):
 
         return to_update_node_ids, unique_messages, unique_timestamps
 
+class AttentionMessageAggregator(MessageAggregator):
+    def __init__(self, message_dim, device):
+        super(AttentionMessageAggregator, self).__init__(device)
+        # An MLP to compute attention scores for each raw message
+        self.attention_mlp = torch.nn.Sequential(
+            torch.nn.Linear(message_dim, message_dim // 2),
+            torch.nn.ReLU(),
+            torch.nn.Linear(message_dim // 2, 1)
+        ).to(device)
 
-def get_message_aggregator(aggregator_type, device):
+    def aggregate(self, node_ids, messages):
+        unique_node_ids = np.unique(node_ids)
+        unique_messages = []
+        unique_timestamps = []
+        to_update_node_ids = []
+
+        for node_id in unique_node_ids:
+            if len(messages[node_id]) > 0:
+                to_update_node_ids.append(node_id)
+                
+                # Stack all messages for this node -> shape: [num_messages, message_dim]
+                msgs = torch.stack([m[0] for m in messages[node_id]]) 
+                
+                # 1. Compute Attention Scores: [num_messages, 1]
+                att_scores = self.attention_mlp(msgs)
+                
+                # 2. Normalize with Softmax: [num_messages, 1]
+                att_weights = torch.softmax(att_scores, dim=0)
+                
+                # 3. Compute Weighted Sum: [message_dim]
+                agg_msg = torch.sum(att_weights * msgs, dim=0)
+                
+                unique_messages.append(agg_msg)
+                
+                # Retain the timestamp of the last interaction for causal consistency
+                unique_timestamps.append(messages[node_id][-1][1])
+
+        unique_messages = torch.stack(unique_messages) if len(to_update_node_ids) > 0 else []
+        unique_timestamps = torch.stack(unique_timestamps) if len(to_update_node_ids) > 0 else []
+
+        return to_update_node_ids, unique_messages, unique_timestamps
+
+def get_message_aggregator(aggregator_type, device, message_dim=None):
     if aggregator_type == "last":
         return LastMessageAggregator(device=device)
     elif aggregator_type == "mean":
         return MeanMessageAggregator(device=device)
+    elif aggregator_type == "attention":
+        if message_dim is None:
+            raise ValueError("message_dim must be provided for the attention aggregator")
+        return AttentionMessageAggregator(message_dim=message_dim, device=device)
     else:
         raise ValueError(
             "Message aggregator {} not implemented".format(aggregator_type)
