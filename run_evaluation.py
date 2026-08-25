@@ -6,8 +6,7 @@ Master benchmarking script -- graph-transformer decoder, cached vs. uncached,
 Scope: baseline runs with the OLD (legacy) link predictor are already
 evaluated per mentor guidance and are NOT reproduced here. This script always
 uses the new graph-transformer decoder (--link_pred_module transformer) and,
-for each architecture group (DYREP, JODIE, TGN_NO_MEM, TGN_TIME, TGN_ID,
-TGN_SEAL, TGAT), runs every combination of:
+for the TGN_SEAL architecture group, runs every combination of:
 
     cache:  no cache / --use_cache / --use_layered_cache
     hops:   --n_hops 2 / --n_hops 3
@@ -47,43 +46,16 @@ from pathlib import Path
 #
 # Dataset names match the files actually present under data/ (ml_<name>.csv):
 #   calls, CollegeMsg, email-Eu-core-temporal-Dept1..4
-# wiki-talk-2y is not available and has been removed from every group that
-# used it (JODIE, TGN_ID, TGN_SEAL). "calls" is its own dataset, confirmed
-# NOT equivalent to the old "sms" slot.
+# wiki-talk-2y is not available and has been removed.
 EXPERIMENT_GROUPS = {
-    "DYREP": [
-        "-d email-Eu-core-temporal-Dept2 --use_memory --memory_updater rnn --dyrep --use_destination_embedding_in_message --prefix dyrep-rnn-dept2 --n_runs 10 --n_epoch 50",
-        "-d CollegeMsg --use_memory --memory_updater rnn --dyrep --use_destination_embedding_in_message --prefix dyrep-rnn-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
-    "JODIE": [
-        # wiki-talk-2y removed (not available)
-        "-d CollegeMsg --use_memory --memory_updater rnn --embedding_module time --prefix jodie-rnn-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
-    "TGN_NO_MEM": [
-        "-d email-Eu-core-temporal-Dept4 --prefix tgn-no-mem-dept4 --n_runs 10 --n_epoch 50",
-        "-d CollegeMsg --prefix tgn-no-mem-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
-    "TGN_TIME": [
-        "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module time --prefix tgn-time-dept4 --n_runs 10 --n_epoch 50",
-        "-d CollegeMsg --use_memory --embedding_module time --prefix tgn-time-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
-    "TGN_ID": [
-        "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module identity --prefix tgn-id-dept4 --n_runs 10 --n_epoch 50",
-        # wiki-talk-2y removed (not available)
-        "-d CollegeMsg --use_memory --embedding_module identity --prefix tgn-id-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
     "TGN_SEAL": [
         "-d email-Eu-core-temporal-Dept1 --use_memory --embedding_module identity --prefix tgn-seal-dept1 --n_runs 10 --n_epoch 50",
         "-d email-Eu-core-temporal-Dept2 --use_memory --embedding_module identity --prefix tgn-seal-dept2 --n_runs 10 --n_epoch 50",
         "-d email-Eu-core-temporal-Dept3 --use_memory --embedding_module identity --prefix tgn-seal-dept3 --n_runs 10 --n_epoch 50",
         "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module identity --prefix tgn-seal-dept4 --n_runs 10 --n_epoch 50",
-        # wiki-talk-2y removed (not available)
         "-d calls --use_memory --embedding_module identity --prefix tgn-seal-calls --n_runs 1 --n_epoch 50",
         "-d CollegeMsg --use_memory --embedding_module graph_attention --prefix tgn-seal-attn-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
-    "TGAT": [
-        "-d CollegeMsg --embedding_module graph_attention --prefix tgat-CollegeMsg --n_runs 10 --n_epoch 50",
-    ],
+    ]
 }
 
 # (suffix appended to --prefix, flag injected into the training command --
@@ -189,6 +161,13 @@ def main():
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--group", type=str, default="ALL", choices=["ALL"] + list(EXPERIMENT_GROUPS.keys()))
     parser.add_argument(
+        "--dataset-filter",
+        type=str,
+        default="all",
+        choices=["all", "dept"],
+        help="Dataset filter. 'all' runs on all datasets. 'dept' runs only on email-Eu-core-temporal-Dept 1 to 4.",
+    )
+    parser.add_argument(
         "--cache-mode",
         type=str,
         default="all",
@@ -252,6 +231,10 @@ def main():
     selected_tasks = []
     for group_name, cmd_list in groups_to_run.items():
         for base_cmd in cmd_list:
+            # Apply the dataset filter
+            if args.dataset_filter == "dept" and "email-Eu-core-temporal-Dept" not in base_cmd:
+                continue
+
             for cache_suffix, cache_flag in active_cache_variants:
                 for hop_suffix, n_hops in active_hop_variants:
                     cmd = build_variant(

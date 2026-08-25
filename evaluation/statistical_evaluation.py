@@ -142,6 +142,7 @@ def main():
                 print(f"  [{cv:14s}] AP: {aps.mean():.4f} ± {aps.std():.4f}"
                       f"   |  mean epoch time: {times[:, 0].mean():.2f}s"
                       f"   |  mean total time: {times[:, 1].mean():.2f}s"
+                      f"   |  mean epochs to converge: {times[:, 2].mean():.1f}"
                       f"   |  cache hit rate: {hit_rate_str}")
 
                 csv_rows.append({
@@ -154,6 +155,7 @@ def main():
                     "ap_std": aps.std(),
                     "mean_epoch_time_s": times[:, 0].mean(),
                     "mean_total_time_s": times[:, 1].mean(),
+                    "mean_epochs_to_converge": times[:, 2].mean(),
                     "cache_hit_rate": mean_hit_rate if mean_hit_rate is not None else "",
                 })
 

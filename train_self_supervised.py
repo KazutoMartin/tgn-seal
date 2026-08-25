@@ -86,7 +86,11 @@ parser.add_argument(
     help="Type of memory updater",
 )
 parser.add_argument(
-    "--aggregator", type=str, default="last", help="Type of message " "aggregator"
+    "--aggregator", 
+    type=str, 
+    default="last", 
+    choices=["last", "mean", "attention"],
+    help="Type of message aggregator (last, mean, or attention)"
 )
 parser.add_argument(
     "--memory_update_at_end",
@@ -140,6 +144,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--pooling",
+    type=str,
+    default="mean",
+    choices=["mean", "target"],
+    help="Pooling strategy for the graph transformer (mean or target)",
+)
+
+parser.add_argument(
     "--use_cache", action="store_true", help="Enable the flat incremental push cache"
 )
 parser.add_argument(
@@ -148,6 +160,8 @@ parser.add_argument(
 parser.add_argument(
     "--n_hops", type=int, default=2, help="Number of hops for the enclosing subgraph passed to the link predictor"
 )
+
+
 try:
     args = parser.parse_args()
 except:
@@ -289,6 +303,7 @@ for i in range(args.n_runs):
         use_source_embedding_in_message=args.use_source_embedding_in_message,
         dyrep=args.dyrep,
         link_pred_module_type=args.link_pred_module,
+        pooling_type=args.pooling,
         batch_size=BATCH_SIZE,
         use_cache=USE_CACHE,
         n_hops=args.n_hops

@@ -44,6 +44,7 @@ class TGN(torch.nn.Module):
         use_source_embedding_in_message=False,
         dyrep=False,
         link_pred_module_type="dgcnn",
+        pooling_type="mean",
         max_z=100,
         batch_size=200,
         use_cache=False,
@@ -150,7 +151,8 @@ class TGN(torch.nn.Module):
                 num_layers=2,       # Configurable
                 max_z=max_z,
                 num_heads=2,        # Configurable
-                dropout=dropout
+                dropout=dropout,
+                pooling_type=pooling_type
             )
         else:
             # Legacy decoders (dgcnn/gin/sage/gcn/merge) from link_prediction_module.py

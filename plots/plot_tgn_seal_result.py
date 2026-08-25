@@ -2,7 +2,7 @@ import pickle
 
 import matplotlib.pyplot as plt
 
-AVAILABLE_DATASET = ["calls", "CollegeMsg-2m", "email1", "email2", "email3", "email4"]
+AVAILABLE_DATASET = ["dept1", "dept2", "dept3", "dept4"]
 DATASET = AVAILABLE_DATASET[1]
 
 
@@ -14,7 +14,7 @@ def read_file(file_name):
     return d
 
 
-file_path = f"./results/tgn-seal-{DATASET}-2h.pkl"
+file_path = f"./results/tgn-seal-{DATASET}-layered-cache-2hop.pkl"
 results = read_file(file_path)
 
 epochs = range(1, len(results['val_aps']) + 1)

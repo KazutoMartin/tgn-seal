@@ -3,8 +3,10 @@ from torch import nn
 from torch_geometric.utils import to_dense_batch
 
 class TransformerLinkPred(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, num_layers, max_z, num_heads=4, dropout=0.1):
+    def __init__(self, in_channels, hidden_channels, num_layers, max_z, num_heads=4, dropout=0.1, pooling_type="mean"):
         super().__init__()
+        
+        self.pooling_type = pooling_type
         
         # 1. DRNL Structural Encoding
         self.z_embedding = nn.Embedding(max_z + 1, in_channels)
@@ -21,8 +23,11 @@ class TransformerLinkPred(torch.nn.Module):
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers, enable_nested_tensor=False)
         
         # 3. Readout & MLP
+        # Dynamically calculate the input size based on the pooling choice
+        mlp_in_channels = in_channels * 2 if pooling_type == "target" else in_channels
+        
         self.mlp = nn.Sequential(
-            nn.Linear(in_channels * 2, hidden_channels),
+            nn.Linear(mlp_in_channels, hidden_channels),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_channels, 1)
@@ -47,18 +52,22 @@ class TransformerLinkPred(torch.nn.Module):
         # Pass through Transformer
         out_dense = self.transformer(x_dense, src_key_padding_mask=padding_mask)
         
-        # --- DIRECTIONAL TARGET NODE EXTRACTION ---
-        # Mask for Source Node (z == 1) and Destination Node (z == 2)
-        src_mask = (z_dense == 1).unsqueeze(-1).float()
-        dst_mask = (z_dense == 2).unsqueeze(-1).float()
-        
-        # Extract individual representations
-        # Because there is exactly 1 src and 1 dst per subgraph, summing over dim=1 safely extracts the exact vector
-        src_pooled = (out_dense * src_mask).sum(dim=1) 
-        dst_pooled = (out_dense * dst_mask).sum(dim=1)
-        
-        # Concatenate the representations: [B, in_channels] + [B, in_channels] -> [B, 2 * in_channels]
-        pooled = torch.cat([src_pooled, dst_pooled], dim=1)
+        if self.pooling_type == "target":
+            # --- DIRECTIONAL TARGET NODE EXTRACTION ---
+            # Mask for Source Node (z == 1) and Destination Node (z == 2)
+            src_mask = (z_dense == 1).unsqueeze(-1).float()
+            dst_mask = (z_dense == 2).unsqueeze(-1).float()
+            
+            src_pooled = (out_dense * src_mask).sum(dim=1) 
+            dst_pooled = (out_dense * dst_mask).sum(dim=1)
+            
+            # Concatenate the representations: [B, in_channels] + [B, in_channels] -> [B, 2 * in_channels]
+            pooled = torch.cat([src_pooled, dst_pooled], dim=1)
+            
+        else:
+            # --- MEAN POOLING (DEFAULT) ---
+            mask_float = mask.unsqueeze(-1).float()
+            pooled = (out_dense * mask_float).sum(dim=1) / mask_float.sum(dim=1).clamp(min=1e-9)
         
         # Return link probability logits
         return self.mlp(pooled)
