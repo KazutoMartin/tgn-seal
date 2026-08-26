@@ -391,10 +391,6 @@ for i in range(args.n_runs):
             loss /= args.backprop_every
             loss.backward()
 
-            for name, p in tgn.named_parameters():
-                if not p.is_leaf:
-                    print(f"🚨 FOUND THE CULPRIT: {name} is not a leaf tensor!")
-
             # Training Stability Guardrail
             torch.nn.utils.clip_grad_norm_(tgn.parameters(), max_norm=1.0)
 
