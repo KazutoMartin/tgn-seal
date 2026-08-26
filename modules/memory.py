@@ -9,8 +9,8 @@ class Memory(nn.Module):
 
     def __init__(
         self,
-        n_nodes,
-        memory_dimension,
+        n_nodes:int,
+        memory_dimension:int,
         input_dimension,
         message_dimension=None,
         device="cpu",
@@ -25,6 +25,9 @@ class Memory(nn.Module):
 
         self.combination_method = combination_method
 
+        self.register_buffer('memory', torch.zeros((self.n_nodes, self.memory_dimension)))
+        self.register_buffer('last_update', torch.zeros(self.n_nodes))
+
         self.__init_memory__()
 
     def __init_memory__(self):
@@ -32,13 +35,12 @@ class Memory(nn.Module):
         Initializes the memory to all zeros. It should be called at the start of each epoch.
         """
         # Treat memory as parameter so that it is saved and loaded together with the model
-        self.memory = nn.Parameter(
-            torch.zeros((self.n_nodes, self.memory_dimension)).to(self.device),
-            requires_grad=False,
-        )
-        self.last_update = nn.Parameter(
-            torch.zeros(self.n_nodes).to(self.device), requires_grad=False
-        )
+        # Zero out existing buffers in-place instead of creating new ones
+        self.memory.zero_()
+        self.last_update.zero_()
+
+        # if a key is not available it will return empty list
+        self.messages = defaultdict(list)
 
         # if a key is not available it will return empty list
         self.messages = defaultdict(list)
@@ -61,13 +63,13 @@ class Memory(nn.Module):
         for k, v in self.messages.items():
             messages_clone[k] = [(x[0].clone(), x[1].clone()) for x in v]
 
-        return self.memory.data.clone(), self.last_update.data.clone(), messages_clone
+        # Use standard .clone() without .data
+        return self.memory.clone(), self.last_update.clone(), messages_clone
 
     def restore_memory(self, memory_backup):
-        self.memory.data, self.last_update.data = (
-            memory_backup[0].clone(),
-            memory_backup[1].clone(),
-        )
+        # Safely overwrite the buffer values in-place
+        self.memory.copy_(memory_backup[0])
+        self.last_update.copy_(memory_backup[1])
 
         self.messages = defaultdict(list)
         for k, v in memory_backup[2].items():
