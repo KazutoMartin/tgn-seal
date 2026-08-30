@@ -4,7 +4,7 @@
 
 # Custom
 log/
-results/
+results*/
 saved_checkpoints/
 saved_models/
 # data/
