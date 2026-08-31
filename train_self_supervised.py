@@ -12,7 +12,8 @@ from pathlib import Path
 from evaluation.evaluation import eval_edge_prediction
 from model.tgn import TGN
 from utils.data_processing import get_data, compute_time_statistics
-from utils.utils import EarlyStopMonitor, RandEdgeSampler, get_neighbor_finder
+from utils.utils import EarlyStopMonitor, RandEdgeSampler, HybridHardEdgeSampler, get_neighbor_finder
+from modules.loss import FastConvergenceFocalLoss
 
 torch.backends.cuda.enable_flash_sdp(False)
 torch.backends.cuda.enable_mem_efficient_sdp(False)
@@ -161,6 +162,39 @@ parser.add_argument(
     "--n_hops", type=int, default=2, help="Number of hops for the enclosing subgraph passed to the link predictor"
 )
 
+parser.add_argument(
+    "--loss",
+    type=str,
+    default="bce",
+    choices=["bce", "focal"],
+    help="Loss function selection: standard binary cross entropy ('bce') or focal loss ('focal')",
+)
+parser.add_argument(
+    "--alpha",
+    type=float,
+    default=0.5,
+    help="Alpha balancing factor for Focal Loss",
+)
+parser.add_argument(
+    "--gamma",
+    type=float,
+    default=1.2,
+    help="Gamma focusing parameter for Focal Loss (recommended range: [1.0, 1.5])",
+)
+parser.add_argument(
+    "--sampler",
+    type=str,
+    default="rand",
+    choices=["rand", "hybrid_hard"],
+    help="Negative edge sampler selection: 'rand' for uniform or 'hybrid_hard' for 2-hop hard mining",
+)
+parser.add_argument(
+    "--hard_ratio",
+    type=float,
+    default=0.7,
+    help="Ratio of hard 2-hop negative samples when using hybrid_hard sampler",
+)
+
 
 try:
     args = parser.parse_args()
@@ -236,7 +270,17 @@ full_ngh_finder = get_neighbor_finder(
 # Initialize negative samplers. Set seeds for validation and testing so negatives are the same
 # across different runs
 # NB: in the inductive setting, negatives are sampled only amongst other new nodes
-train_rand_sampler = RandEdgeSampler(train_data.sources, train_data.destinations)
+# Initialize negative samplers
+if args.sampler == "hybrid_hard":
+    train_sampler = HybridHardEdgeSampler(
+        train_data.sources,
+        train_data.destinations,
+        neighbor_finder=train_ngh_finder,
+        hard_ratio=args.hard_ratio,
+        hop=args.n_hops,
+    )
+else:
+    train_sampler = RandEdgeSampler(train_data.sources, train_data.destinations)
 val_rand_sampler = RandEdgeSampler(full_data.sources, full_data.destinations, seed=0)
 nn_val_rand_sampler = RandEdgeSampler(
     new_node_val_data.sources, new_node_val_data.destinations, seed=1
@@ -308,7 +352,10 @@ for i in range(args.n_runs):
         use_cache=USE_CACHE,
         n_hops=args.n_hops
     )
-    criterion = torch.nn.BCEWithLogitsLoss()
+    if args.loss == "focal":
+        criterion = FastConvergenceFocalLoss(alpha=args.alpha, gamma=args.gamma)
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(tgn.parameters(), lr=LEARNING_RATE)
     tgn = tgn.to(device)
 
@@ -369,7 +416,14 @@ for i in range(args.n_runs):
                 timestamps_batch = train_data.timestamps[start_idx:end_idx]
 
                 size = len(sources_batch)
-                _, negatives_batch = train_rand_sampler.sample(size)
+                if args.sampler == "hybrid_hard":
+                    _, negatives_batch = train_sampler.sample(
+                        size,
+                        current_sources=sources_batch,
+                        current_timestamps=timestamps_batch,
+                    ) 
+                else:
+                    _, negatives_batch = train_sampler.sample(size)
 
                 with torch.no_grad():
                     pos_label = torch.ones(size, dtype=torch.float, device=device)

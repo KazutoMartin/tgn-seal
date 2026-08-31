@@ -62,7 +62,60 @@ class RandEdgeSampler(object):
     def reset_random_state(self):
         self.random_state = np.random.RandomState(self.seed)
 
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
+
+class HybridHardEdgeSampler(object):
+    """Hybrid Negative Edge Sampler.
+    
+    Draws a configurable ratio (default 70%) of negative samples from 2-hop temporal 
+    neighbors (structural competitors sharing context without active edges) and the 
+    remaining portion (30%) from global uniform random nodes.
+    """
+    def __init__(self, src_list, dst_list, neighbor_finder=None, hard_ratio=0.7, hop=2, seed=None):
+        self.seed = seed
+        self.hard_ratio = hard_ratio
+        self.hop = hop
+        self.neighbor_finder = neighbor_finder
+        self.src_list = np.unique(src_list)
+        self.dst_list = np.unique(dst_list)
+        self.random_state = np.random.RandomState(self.seed) if seed is not None else np.random.RandomState()
+
+    def sample(self, size, current_sources=None, current_timestamps=None):
+        if self.neighbor_finder is None or current_sources is None or current_timestamps is None:
+            dst_index = self.random_state.randint(0, len(self.dst_list), size)
+            src_index = self.random_state.randint(0, len(self.src_list), size) if current_sources is None else current_sources
+            return src_index, self.dst_list[dst_index]
+
+        neg_dsts = []
+        num_hard = int(size * self.hard_ratio)
+
+        for idx, (src, ts) in enumerate(zip(current_sources, current_timestamps)):
+            if idx < num_hard:
+                # Dynamically scale the hard negative search boundary using the specified hop depth
+                k_hop_nodes, _, _, _ = self.neighbor_finder.get_k_hop_temporal_neighbor(
+                    np.array([src]), np.array([ts]), y=0, hop=self.hop, n_neighbors=10
+                )
+                
+                candidates = np.unique(k_hop_nodes.flatten())
+                # Filter out padding (0) and the source node itself
+                valid_candidates = [c for c in candidates if c != 0 and c != src]
+
+                if len(valid_candidates) > 0:
+                    neg_dsts.append(self.random_state.choice(valid_candidates))
+                else:
+                    neg_dsts.append(self.dst_list[self.random_state.randint(0, len(self.dst_list))])
+            else:
+                neg_dsts.append(self.dst_list[self.random_state.randint(0, len(self.dst_list))])
+
+        return current_sources, np.array(neg_dsts)
+
+    def reset_random_state(self):
+        if self.seed is not None:
+            self.random_state = np.random.RandomState(self.seed)
 def remove_redundant_edge(neighbors, edge_idxs, edge_times, edge_index):
     unique_edge_label = np.unique(edge_idxs)
     unique_edge_time = np.zeros(len(unique_edge_label)).astype(np.float32)
