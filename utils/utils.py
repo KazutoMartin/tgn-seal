@@ -91,18 +91,22 @@ class HybridHardEdgeSampler(object):
             return src_index, self.dst_list[dst_index]
 
         neg_dsts = []
+        
         num_hard = int(size * self.hard_ratio)
+        hard_mask = np.zeros(size, dtype=bool)
+        hard_mask[:num_hard] = True
+        self.random_state.shuffle(hard_mask)
 
         for idx, (src, ts) in enumerate(zip(current_sources, current_timestamps)):
-            if idx < num_hard:
-                # Dynamically scale the hard negative search boundary using the specified hop depth
+            if hard_mask[idx]:
+                # Dynamically scale the hard negative search boundary
                 k_hop_nodes, _, _, _ = self.neighbor_finder.get_k_hop_temporal_neighbor(
                     np.array([src]), np.array([ts]), y=0, hop=self.hop, n_neighbors=10
                 )
                 
                 candidates = np.unique(k_hop_nodes.flatten())
-                # Filter out padding (0) and the source node itself
-                valid_candidates = [c for c in candidates if c != 0 and c != src]
+                # FIX 1: Enforce strict integer casting to strip out float64 artifacts
+                valid_candidates = [int(c) for c in candidates if int(c) != 0 and int(c) != int(src)]
 
                 if len(valid_candidates) > 0:
                     neg_dsts.append(self.random_state.choice(valid_candidates))
@@ -111,7 +115,8 @@ class HybridHardEdgeSampler(object):
             else:
                 neg_dsts.append(self.dst_list[self.random_state.randint(0, len(self.dst_list))])
 
-        return current_sources, np.array(neg_dsts)
+        # FIX 2: Enforce int64 array type before passing back to the PyTorch batch loop
+        return current_sources, np.array(neg_dsts, dtype=np.int64)
 
     def reset_random_state(self):
         if self.seed is not None:
@@ -818,6 +823,4 @@ class NeighborFinder:
             )
             for sub_hop, data in sub_layered.items():
                 result[sub_hop + 1] = data
-
         return result
-
