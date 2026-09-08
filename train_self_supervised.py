@@ -430,7 +430,8 @@ for i in range(args.n_runs):
                     neg_label = torch.zeros(size, dtype=torch.float, device=device)
 
                 tgn = tgn.train()
-                pos_prob, neg_prob = tgn.compute_edge_probabilities(
+                # Unpack density tensors
+                pos_prob, neg_prob, pos_density, neg_density = tgn.compute_edge_probabilities(
                     sources_batch,
                     destinations_batch,
                     negatives_batch,
@@ -438,10 +439,23 @@ for i in range(args.n_runs):
                     edge_idxs_batch,
                     NUM_NEIGHBORS,
                 )
-                loss += criterion(pos_prob.view(-1), pos_label) + criterion(
-                    neg_prob.view(-1), neg_label
-                )
-
+                
+                if args.loss == "focal" and args.link_pred_module == "transformer":
+                    # Continuous Gamma Mapping hyperparameters
+                    s = 10.0  # scaling slope
+                    d_0 = 0.5 # inflection threshold
+                    
+                    pos_gamma = 0.0 + (2.0 - 0.0) * (1.0 - torch.sigmoid(s * (pos_density - d_0)))
+                    neg_gamma = 0.0 + (2.0 - 0.0) * (1.0 - torch.sigmoid(s * (neg_density - d_0)))
+                    
+                    loss += criterion(pos_prob.view(-1), pos_label, pos_gamma) + criterion(
+                        neg_prob.view(-1), neg_label, neg_gamma
+                    )
+                else:
+                    # Fallback for standard BCE or non-transformer decoders
+                    loss += criterion(pos_prob.view(-1), pos_label) + criterion(
+                        neg_prob.view(-1), neg_label
+                    )
             loss /= args.backprop_every
             loss.backward()
 

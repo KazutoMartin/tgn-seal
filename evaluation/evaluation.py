@@ -35,7 +35,7 @@ def eval_edge_prediction(
             size = len(sources_batch)
             _, negative_samples = negative_edge_sampler.sample(size)
 
-            pos_prob, neg_prob = model.compute_edge_probabilities(
+            pos_prob, neg_prob, _, _ = model.compute_edge_probabilities(
                 sources_batch,
                 destinations_batch,
                 negative_samples,

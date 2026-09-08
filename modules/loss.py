@@ -14,15 +14,18 @@ class FastConvergenceFocalLoss(nn.Module):
         self.gamma = gamma
         self.reduction = reduction
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets, gamma=None):
         bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
         
         # Calculate p_t
         p = torch.sigmoid(inputs)
         pt = p * targets + (1.0 - p) * (1.0 - targets)
         
+        # Use dynamic gamma if provided, else fallback to static initialization
+        effective_gamma = gamma if gamma is not None else self.gamma
+        
         # Focal modulating factor: (1 - p_t)^gamma
-        focal_weight = (1.0 - pt) ** self.gamma
+        focal_weight = (1.0 - pt) ** effective_gamma
         
         # Alpha class balancing
         if self.alpha is not None and self.alpha >= 0:
@@ -36,4 +39,3 @@ class FastConvergenceFocalLoss(nn.Module):
         elif self.reduction == "sum":
             return loss.sum()
         return loss
-

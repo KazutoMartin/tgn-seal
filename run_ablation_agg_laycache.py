@@ -22,9 +22,9 @@ from pathlib import Path
 # Base departmental configurations (Email-Eu-core Dept 1 to 4)
 EXPERIMENT_CONFIGS = [
     "-d email-Eu-core-temporal-Dept1 --use_memory --embedding_module identity --prefix tgn-seal-dept1-attn-target-layered --n_runs 2 --n_epoch 50",
-    "-d email-Eu-core-temporal-Dept2 --use_memory --embedding_module identity --prefix tgn-seal-dept2-attn-target-layered --n_runs 2 --n_epoch 50",
-    "-d email-Eu-core-temporal-Dept3 --use_memory --embedding_module identity --prefix tgn-seal-dept3-attn-target-layered --n_runs 2 --n_epoch 50",
-    "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module identity --prefix tgn-seal-dept4-attn-target-layered --n_runs 2 --n_epoch 50",
+    # "-d email-Eu-core-temporal-Dept2 --use_memory --embedding_module identity --prefix tgn-seal-dept2-attn-target-layered --n_runs 2 --n_epoch 50",
+    # "-d email-Eu-core-temporal-Dept3 --use_memory --embedding_module identity --prefix tgn-seal-dept3-attn-target-layered --n_runs 2 --n_epoch 50",
+    # "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module identity --prefix tgn-seal-dept4-attn-target-layered --n_runs 2 --n_epoch 50",
 ]
 
 POST_PROCESSING_COMMANDS = [

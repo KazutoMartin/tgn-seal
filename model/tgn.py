@@ -384,27 +384,35 @@ class TGN(torch.nn.Module):
         # --- POSITIVE SAMPLES ---
         pos_loader = DataLoader(pos_data_list, batch_size=self.batch_size)
         pos_scores = []
+        pos_densities = []
         for data in pos_loader:
             data = data.to(self.device)
             if use_transformer_decoder:
-                pos_scores.append(self.link_score(data.x, data.z, data.batch))
+                score, density = self.link_score(data.x, data.z, data.batch, data.edge_index)
+                pos_scores.append(score)
+                pos_densities.append(density)
             else:
                 pos_scores.append(self.link_score(data.x, data.z, data.edge_index, data.batch))
         pos_score = torch.cat(pos_scores, dim=0) if pos_scores else torch.empty(0, device=self.device)
+        pos_density = torch.cat(pos_densities, dim=0) if pos_densities else torch.empty(0, device=self.device)
 
         # --- NEGATIVE SAMPLES ---
         neg_loader = DataLoader(neg_data_list, batch_size=self.batch_size) 
         neg_scores = []
+        neg_densities = []
         for data in neg_loader:
             data = data.to(self.device)
             if use_transformer_decoder:
-                neg_scores.append(self.link_score(data.x, data.z, data.batch))
+                score, density = self.link_score(data.x, data.z, data.batch, data.edge_index)
+                neg_scores.append(score)
+                neg_densities.append(density)
             else:
                 neg_scores.append(self.link_score(data.x, data.z, data.edge_index, data.batch))
         neg_score = torch.cat(neg_scores, dim=0) if neg_scores else torch.empty(0, device=self.device)
+        neg_density = torch.cat(neg_densities, dim=0) if neg_densities else torch.empty(0, device=self.device)
 
-        return pos_score, neg_score
-
+        return pos_score, neg_score, pos_density, neg_density
+    
     def update_memory(self, nodes, messages):
         # Aggregate messages for the same nodes
         unique_nodes, unique_messages, unique_timestamps = (

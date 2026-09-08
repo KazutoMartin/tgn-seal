@@ -33,18 +33,21 @@ class TransformerLinkPred(torch.nn.Module):
             nn.Linear(hidden_channels, 1)
         )
 
-    def forward(self, x, z, batch):
-        """
-        x: Temporal node features [N, in_channels]
-        z: DRNL node labels [N]
-        batch: Graph assignment vector [N]
-        """
+    def forward(self, x, z, batch, edge_index):
         # Inject DRNL structural features
         x = x + self.z_embedding(z)
         
         # Convert k-hop subgraphs and labels into dense tensors
         x_dense, mask = to_dense_batch(x, batch)
         z_dense, _ = to_dense_batch(z, batch)
+        
+        # --- NEW: Compute Subgraph Density ---
+        # Number of nodes per subgraph |V_i|
+        v_i = mask.sum(dim=1).float()
+        # Number of edges per subgraph |E_i|
+        e_i = torch.bincount(batch[edge_index[0]], minlength=x_dense.shape[0]).float()
+        # Local Subgraph Edge Density
+        density = e_i / (v_i * (v_i - 1.0)).clamp(min=1e-9)
         
         # PyTorch Transformer padding mask expects True for padded/ignored elements
         padding_mask = ~mask
@@ -53,21 +56,17 @@ class TransformerLinkPred(torch.nn.Module):
         out_dense = self.transformer(x_dense, src_key_padding_mask=padding_mask)
         
         if self.pooling_type == "target":
-            # --- DIRECTIONAL TARGET NODE EXTRACTION ---
-            # Mask for Source Node (z == 1) and Destination Node (z == 2)
+            # default
             src_mask = (z_dense == 1).unsqueeze(-1).float()
             dst_mask = (z_dense == 2).unsqueeze(-1).float()
             
             src_pooled = (out_dense * src_mask).sum(dim=1) 
             dst_pooled = (out_dense * dst_mask).sum(dim=1)
-            
-            # Concatenate the representations: [B, in_channels] + [B, in_channels] -> [B, 2 * in_channels]
             pooled = torch.cat([src_pooled, dst_pooled], dim=1)
             
         else:
-            # --- MEAN POOLING (DEFAULT) ---
             mask_float = mask.unsqueeze(-1).float()
             pooled = (out_dense * mask_float).sum(dim=1) / mask_float.sum(dim=1).clamp(min=1e-9)
         
-        # Return link probability logits
-        return self.mlp(pooled)
+        # Return link probability logits AND density
+        return self.mlp(pooled), density
