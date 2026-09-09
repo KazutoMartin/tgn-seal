@@ -20,7 +20,6 @@ torch.backends.cuda.enable_mem_efficient_sdp(False)
 torch.backends.cuda.enable_math_sdp(True)  # force the reference math backend everywhere
 
 
-import fdafdafd
 torch.manual_seed(0)
 np.random.seed(0)
 
