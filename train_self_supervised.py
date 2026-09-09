@@ -314,6 +314,7 @@ mean_time_shift_src, std_time_shift_src, mean_time_shift_dst, std_time_shift_dst
 )
 
 for i in range(args.n_runs):
+    train_sampler.reset_random_state()
     results_path = (
         "results/{}_{}.pkl".format(args.prefix, i)
         if i > 0

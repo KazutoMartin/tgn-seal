@@ -34,6 +34,8 @@ class TransformerLinkPred(torch.nn.Module):
         )
 
     def forward(self, x, z, batch, edge_index):
+        z = torch.clamp(z, max=self.z_embedding.num_embeddings - 1)
+
         # Inject DRNL structural features
         x = x + self.z_embedding(z)
         
