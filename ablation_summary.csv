@@ -1,0 +1,2 @@
+experiment,dataset,hop,cache_mode,n_runs_found,ap_mean,ap_std,mean_epoch_time_s,mean_total_time_s,mean_epochs_to_converge,cache_hit_rate
+TGN_SEAL-Dept4,dept4,3hop,layered-cache,2,0.8422601242803041,0.01688955116480445,77.11016166210175,77.11016166210175,1.0,0.7616935311471205
