@@ -584,7 +584,7 @@ for i in range(args.n_runs):
                 "cache_hit_rates": cache_hit_rates,
                 "mean_extraction_ms": epoch_mean_extraction_ms,
                 "mean_push_ms": epoch_mean_push_ms,
-                "mean_drnl_ms":mean_drnl_ms,
+                "mean_drnl_ms":epoch_mean_drnl_ms,
             },
             open(results_path, "wb"),
         )
@@ -665,7 +665,7 @@ for i in range(args.n_runs):
             "cache_hit_rates": cache_hit_rates,
             "mean_extraction_ms": epoch_mean_extraction_ms,
             "mean_push_ms": epoch_mean_push_ms,
-            "mean_drnl_ms":mean_drnl_ms,
+            "mean_drnl_ms":epoch_mean_drnl_ms,
         },
         open(results_path, "wb"),
     )
