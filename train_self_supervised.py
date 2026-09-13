@@ -195,6 +195,8 @@ parser.add_argument(
     help="Ratio of hard 2-hop negative samples when using hybrid_hard sampler",
 )
 
+parser.add_argument("--drnl_version", type=str, default="fast", choices=["original", "fast"], help="Which DRNL algorithm to run")
+parser.add_argument("--drnl_distinct", action="store_true", help="Give src and dst different node labels")
 
 try:
     args = parser.parse_args()
@@ -261,11 +263,13 @@ logger.info(args)
 
 # Initialize training neighbor finder to retrieve temporal graph
 train_ngh_finder = get_neighbor_finder(
-    train_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE
+    train_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE,
+    drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct
 )
 # Initialize validation and test neighbor finder to retrieve temporal graph
 full_ngh_finder = get_neighbor_finder(
-    full_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE
+    full_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE,
+    drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct
 )
 # Initialize negative samplers. Set seeds for validation and testing so negatives are the same
 # across different runs
@@ -376,13 +380,25 @@ for i in range(args.n_runs):
     epoch_mean_extraction_ms = []
     epoch_mean_push_ms = []
 
+    epoch_mean_drnl_ms = []
+
     early_stopper = EarlyStopMonitor(max_round=args.patience)
     for epoch in range(NUM_EPOCH):
         start_epoch = time.time()
         ###  Training
         train_ngh_finder.extraction_time_ms = 0.0
+        train_ngh_finder.extraction_call_count = 0
         if USE_CACHE:
             train_ngh_finder.cache.push_time_ms = 0.0
+            train_ngh_finder.cache.push_call_count = 0
+        full_ngh_finder.extraction_time_ms = 0.0
+        full_ngh_finder.extraction_call_count = 0
+
+        train_ngh_finder.drnl_time_ms = 0.0
+        train_ngh_finder.drnl_call_count = 0
+
+        full_ngh_finder.drnl_time_ms = 0.0
+        full_ngh_finder.drnl_call_count = 0
 
         # Reinitialize memory of the model at the start of each epoch
         if USE_MEMORY:
@@ -392,7 +408,6 @@ for i in range(args.n_runs):
         if USE_CACHE:
             train_ngh_finder.cache.reset_cache()
             full_ngh_finder.cache.reset_cache()
-        full_ngh_finder.extraction_time_ms = 0.0
 
         # Train using only training graph
         tgn.set_neighbor_finder(train_ngh_finder)
@@ -488,11 +503,23 @@ for i in range(args.n_runs):
         epoch_time = time.time() - start_epoch
         epoch_times.append(epoch_time)
 
-        mean_extract_ms = train_ngh_finder.extraction_time_ms / num_batch
-        mean_push_ms = train_ngh_finder.cache.push_time_ms / num_batch if USE_CACHE else 0.0
+        mean_extract_ms = (
+            train_ngh_finder.extraction_time_ms / train_ngh_finder.extraction_call_count
+            if train_ngh_finder.extraction_call_count > 0 else 0.0
+        )
+        mean_push_ms = (
+            train_ngh_finder.cache.push_time_ms / train_ngh_finder.cache.push_call_count
+            if USE_CACHE and train_ngh_finder.cache.push_call_count > 0 else 0.0
+        )
+        mean_drnl_ms = (
+            train_ngh_finder.drnl_time_ms / train_ngh_finder.drnl_call_count
+            if train_ngh_finder.drnl_call_count > 0 else 0.0
+        )
         
         epoch_mean_extraction_ms.append(mean_extract_ms)
         epoch_mean_push_ms.append(mean_push_ms)
+        epoch_mean_drnl_ms.append(mean_drnl_ms)
+        
 
         # Cache analysis
         if USE_CACHE:
@@ -557,6 +584,7 @@ for i in range(args.n_runs):
                 "cache_hit_rates": cache_hit_rates,
                 "mean_extraction_ms": epoch_mean_extraction_ms,
                 "mean_push_ms": epoch_mean_push_ms,
+                "mean_drnl_ms":mean_drnl_ms,
             },
             open(results_path, "wb"),
         )
@@ -637,6 +665,7 @@ for i in range(args.n_runs):
             "cache_hit_rates": cache_hit_rates,
             "mean_extraction_ms": epoch_mean_extraction_ms,
             "mean_push_ms": epoch_mean_push_ms,
+            "mean_drnl_ms":mean_drnl_ms,
         },
         open(results_path, "wb"),
     )

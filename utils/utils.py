@@ -182,76 +182,72 @@ def relabel_enclosing_subgraph(nodes, src_node, dst_node, edge_index):
 
 #     return z.to(torch.long)
 
-def drnl_node_labeling(src, dst, edge_index, num_nodes=None):
-    # Ensure consistent ordering
+# 1. COMBINED DRNL CONTROLLER
+def drnl_node_labeling(src, dst, edge_index, num_nodes=None, version="fast", distinct=False):
     src, dst = (dst, src) if src > dst else (src, dst)
-    
-    # Make the graph undirected
     edge_index = torch.cat([edge_index, edge_index.flip(0)], 1)
     
-    # Dynamically resolve number of nodes if not provided
     if num_nodes is None:
         num_nodes = int(edge_index.max().item() + 1) if edge_index.numel() > 0 else max(src, dst) + 1
-        
-    # 1. Create a dense boolean adjacency matrix for rapid parallel lookup
-    adj = torch.zeros((num_nodes, num_nodes), dtype=torch.bool, device=edge_index.device)
-    adj[edge_index[0], edge_index[1]] = True
-    
-    def get_shortest_path(start_node, exclude_node):
-        dist = torch.full((num_nodes,), float('inf'), device=edge_index.device)
-        dist[start_node] = 0.0
-        
-        visited = torch.zeros(num_nodes, dtype=torch.bool, device=edge_index.device)
-        visited[exclude_node] = True
-        visited[start_node] = True
-        
-        current_frontier = torch.zeros(num_nodes, dtype=torch.bool, device=edge_index.device)
-        current_frontier[start_node] = True
-        
-        # PyTorch-Native Breadth-First Search (BFS)
-        for d in range(1, num_nodes):
-            if not current_frontier.any():
-                break
-            
-            # Vectorized neighbor discovery 
-            next_frontier = adj[current_frontier].any(dim=0)
-            
-            # Remove already visited nodes
-            next_frontier = next_frontier & ~visited
-            
-            if not next_frontier.any():
-                break
-                
-            dist[next_frontier] = float(d)
-            visited |= next_frontier
-            current_frontier = next_frontier
-            
-        return dist
 
-    # 2. Compute distances independently
-    dist2src = get_shortest_path(src, dst)
-    dist2dst = get_shortest_path(dst, src)
-    
+    if version == "original":
+        adj = to_scipy_sparse_matrix(edge_index, num_nodes=num_nodes).tocsr()
+        idx = list(range(src)) + list(range(src + 1, adj.shape[0]))
+        adj_wo_src = adj[idx, :][:, idx]
+
+        idx = list(range(dst)) + list(range(dst + 1, adj.shape[0]))
+        adj_wo_dst = adj[idx, :][:, idx]
+
+        dist2src = shortest_path(adj_wo_dst, directed=False, unweighted=True, indices=src)
+        dist2src = np.insert(dist2src, dst, 0, axis=0)
+        dist2src = torch.from_numpy(dist2src)
+
+        dist2dst = shortest_path(adj_wo_src, directed=False, unweighted=True, indices=dst - 1)
+        dist2dst = np.insert(dist2dst, src, 0, axis=0)
+        dist2dst = torch.from_numpy(dist2dst)
+    else:
+        # PyTorch-Native BFS (Fast)
+        adj = torch.zeros((num_nodes, num_nodes), dtype=torch.bool, device=edge_index.device)
+        adj[edge_index[0], edge_index[1]] = True
+        
+        def get_shortest_path(start_node, exclude_node):
+            dist = torch.full((num_nodes,), float('inf'), device=edge_index.device)
+            dist[start_node] = 0.0
+            visited = torch.zeros(num_nodes, dtype=torch.bool, device=edge_index.device)
+            visited[exclude_node] = True
+            visited[start_node] = True
+            current_frontier = torch.zeros(num_nodes, dtype=torch.bool, device=edge_index.device)
+            current_frontier[start_node] = True
+            
+            for d in range(1, num_nodes):
+                if not current_frontier.any(): break
+                next_frontier = adj[current_frontier].any(dim=0)
+                next_frontier = next_frontier & ~visited
+                if not next_frontier.any(): break
+                dist[next_frontier] = float(d)
+                visited |= next_frontier
+                current_frontier = next_frontier
+            return dist
+
+        dist2src = get_shortest_path(src, dst)
+        dist2dst = get_shortest_path(dst, src)
+
     dist = dist2src + dist2dst
-    
-    # 3. Compute DRNL equation
-    dist_over_2 = torch.div(dist, 2, rounding_mode="floor")
-    dist_mod_2 = dist % 2
-    
+    dist_over_2, dist_mod_2 = torch.div(dist, 2, rounding_mode="floor"), dist % 2
+
     z = 1.0 + torch.min(dist2src, dist2dst)
     z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1.0)
-
-    # --- DIRECTIONAL SHIFT ---
-    # Shift all calculated labels up by 1 to make room for distinct src/dst labels
-    z = z + 1.0
     
-    # 4. Enforce strict labeling constraints
-    z[src] = 1.0
-    z[dst] = 2.0
+    if distinct:
+        z = z + 1.0
+        z[src] = 1.0
+        z[dst] = 2.0
+    else:
+        z[src] = 1.0
+        z[dst] = 1.0
+        
     z[torch.isinf(z) | torch.isnan(z)] = 0.0
-    
     return z.to(torch.long)
-
 
 def get_node_max_ts(source_nodes, edge_times, edge_index, timestamp):
     nodes_ts = []
@@ -266,7 +262,7 @@ def get_node_max_ts(source_nodes, edge_times, edge_index, timestamp):
     return np.array(nodes_ts)
 
 
-def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=False):
+def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False):
     max_node_idx = (
         max(data.sources.max(), data.destinations.max())
         if max_node_idx is None
@@ -279,7 +275,7 @@ def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=Fals
         adj_list[source].append((destination, edge_idx, timestamp))
         adj_list[destination].append((source, edge_idx, timestamp))
 
-    return NeighborFinder(adj_list, uniform=uniform, use_layered_cache=use_layered_cache)
+    return NeighborFinder(adj_list, uniform=uniform, use_layered_cache=use_layered_cache, drnl_version=drnl_version, drnl_distinct=drnl_distinct)
 
 
 
@@ -294,6 +290,7 @@ class TemporalSubgraphCache:
         self.cache_hits = 0       
         self.cache_misses = 0
         self.push_time_ms = 0.0
+        self.push_call_count = 0
 
     def get_subgraph(self, node_id, timestamp, neighbor_finder, y, hop, n_neighbors):
         # Ensure time difference is positive (no time-travel) and within the TTL
@@ -374,6 +371,7 @@ class TemporalSubgraphCache:
                 
                 self.ttl_tracker[node] = ts
         self.push_time_ms += (time.perf_counter() - start_time) * 1000
+        self.push_call_count += 1
 
     def reset_cache(self):
         self.subgraph_cache = {}  
@@ -381,6 +379,7 @@ class TemporalSubgraphCache:
         self.cache_hits = 0       
         self.cache_misses = 0
         self.push_time_ms = 0.0
+        self.push_call_count = 0
 
 
 class MultiLayerTemporalCache:
@@ -392,6 +391,7 @@ class MultiLayerTemporalCache:
         self.cache_hits = 0       
         self.cache_misses = 0
         self.push_time_ms = 0.0
+        self.push_call_count = 0
 
     def _init_node_cache(self):
         """Initializes deques partitioned by hop layer for a specific node."""
@@ -534,18 +534,28 @@ class MultiLayerTemporalCache:
                 if not current_frontier:
                     break
         self.push_time_ms += (time.perf_counter() - start_time) * 1000
+        self.push_call_count += 1
     def reset_cache(self):
         self.subgraph_cache = {}  
         self.ttl_tracker = {}     
         self.cache_hits = 0       
         self.cache_misses = 0
         self.push_time_ms = 0.0
+        self.push_call_count = 0
 
 class NeighborFinder:
-    def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False):
+    def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False):
         self.node_to_neighbors = []
         self.node_to_edge_idxs = []
         self.node_to_edge_timestamps = []
+
+        self.drnl_version = drnl_version
+        self.drnl_distinct = drnl_distinct
+        self.drnl_time_ms = 0.0
+        self.drnl_call_count = 0
+
+        self.extraction_time_ms = 0.0
+        self.extraction_call_count = 0
 
         for neighbors in adj_list:
             # Neighbors is a list of tuples (neighbor, edge_idx, timestamp)
@@ -563,7 +573,6 @@ class NeighborFinder:
             self.seed = seed
             self.random_state = np.random.RandomState(self.seed)
 
-        self.extraction_time_ms = 0.0
 
         if use_layered_cache:
             self.cache = MultiLayerTemporalCache()
@@ -796,9 +805,13 @@ class NeighborFinder:
             elif len(mask) == 1 and not mask[0]:
                 sub_edge_times = np.asarray([])
 
+            drnl_start = time.perf_counter()
             z = drnl_node_labeling(
-                src_mapping, dst_mapping, sub_edge_index, len(sub_nodes)
+                src_mapping, dst_mapping, sub_edge_index, len(sub_nodes),
+                version=self.drnl_version, distinct=self.drnl_distinct
             )
+            self.drnl_time_ms += (time.perf_counter() - drnl_start) * 1000
+            self.drnl_call_count += 1
 
             data = Data(
                 nodes=sub_nodes.astype(np.int32),
@@ -811,6 +824,7 @@ class NeighborFinder:
             data_list.append(data)
 
         self.extraction_time_ms += (time.perf_counter() - start_time) * 1000
+        self.extraction_call_count += len(src_nodes)
         return data_list
     def get_layered_k_hop_temporal_neighbor(
         self, source_nodes, timestamps, y, hop=2, n_neighbors=10
