@@ -20,8 +20,6 @@ from utils.build_result_paths import build_model_result_paths
 CACHE_VARIANTS = ["nocache", "cache", "layered-cache"]
 HOP_VARIANTS = ["2hop", "3hop"]
 
-AVAILABLE_KEY = ["val_aps", "new_nodes_val_aps"]
-AP_KEY = AVAILABLE_KEY[0]
 MODE = "mean"
 ALPHA = 0.01
 
@@ -54,7 +52,7 @@ def read_pickle(path):
         return pickle.load(f)
 
 
-def extract_ap(res, key=AP_KEY, mode="best"):
+def extract_ap(res, key, mode="best"):
     aps = np.asarray(res[key])
     if mode == "best":
         return aps.max()
@@ -106,7 +104,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print(f"AP evaluation mode: {MODE.upper()}  |  AP source key: {AP_KEY}")
+    print(f"AP evaluation mode: {MODE.upper()}")
     print("Comparing nocache vs. cache vs. layered-cache, at each hop depth")
     print("=" * 70)
 
@@ -129,18 +127,23 @@ def main():
                     print(f"  [{cv:14s}] partial: {len(found)}/{len(paths)} run(s) found (expected n_runs={exp['n_runs']}) -- using what's there")
 
                 results = [read_pickle(p) for p in found]
-                aps = np.array([extract_ap(r, mode=MODE) for r in results])
+                
+                # Extract both Transductive and Inductive APs
+                trans_aps = np.array([extract_ap(r, key="val_aps", mode=MODE) for r in results])
+                ind_aps = np.array([extract_ap(r, key="new_nodes_val_aps", mode=MODE) for r in results])
+                
                 times = np.array([extract_training_stats(r) for r in results])  # [mean_epoch, total, n_epochs]
                 hit_rates = [extract_cache_hit_rate(r) for r in results]
                 hit_rates = [h for h in hit_rates if h is not None]
                 mean_hit_rate = float(np.mean(hit_rates)) if hit_rates else None
 
-                variant_aps[cv] = aps
+                variant_aps[cv] = {"trans": trans_aps, "ind": ind_aps}
                 variant_times[cv] = times
 
                 hit_rate_str = f"{mean_hit_rate * 100:.1f}%" if mean_hit_rate is not None else "n/a"
-                print(f"  [{cv:14s}] AP: {aps.mean():.4f} ± {aps.std():.4f}"
-                      f"   |  mean epoch time: {times[:, 0].mean():.2f}s"
+                print(f"  [{cv:14s}] Transductive AP: {trans_aps.mean():.4f} ± {trans_aps.std():.4f}")
+                print(f"  [{'':14s}] Inductive AP:    {ind_aps.mean():.4f} ± {ind_aps.std():.4f}")
+                print(f"  [{'':14s}] mean epoch time: {times[:, 0].mean():.2f}s"
                       f"   |  mean total time: {times[:, 1].mean():.2f}s"
                       f"   |  mean epochs to converge: {times[:, 2].mean():.1f}"
                       f"   |  cache hit rate: {hit_rate_str}")
@@ -151,8 +154,10 @@ def main():
                     "hop": hv,
                     "cache_mode": cv,
                     "n_runs_found": len(found),
-                    "ap_mean": aps.mean(),
-                    "ap_std": aps.std(),
+                    "trans_ap_mean": trans_aps.mean(),
+                    "trans_ap_std": trans_aps.std(),
+                    "ind_ap_mean": ind_aps.mean(),
+                    "ind_ap_std": ind_aps.std(),
                     "mean_epoch_time_s": times[:, 0].mean(),
                     "mean_total_time_s": times[:, 1].mean(),
                     "mean_epochs_to_converge": times[:, 2].mean(),
@@ -161,27 +166,37 @@ def main():
 
             # Paired comparisons: does caching change AP vs. the nocache baseline, at this hop depth?
             if "nocache" in variant_aps:
-                baseline_aps = variant_aps["nocache"]
+                baseline_trans_aps = variant_aps["nocache"]["trans"]
+                baseline_ind_aps = variant_aps["nocache"]["ind"]
+                
                 for cv in ["cache", "layered-cache"]:
                     if cv not in variant_aps:
                         continue
-                    cache_aps = variant_aps[cv]
-                    if len(baseline_aps) < 2 or len(cache_aps) < 2:
-                        print(f"  [nocache vs {cv}] fewer than 2 paired samples found -- skipping Wilcoxon test")
-                        continue
-                    if len(baseline_aps) != len(cache_aps):
-                        print(f"  [nocache vs {cv}] unequal sample counts ({len(baseline_aps)} vs {len(cache_aps)}) -- skipping paired Wilcoxon test")
-                        continue
-                    try:
-                        stat, p_value = wilcoxon(cache_aps, baseline_aps)
-                        direction = "no significant AP difference"
-                        if p_value < ALPHA:
-                            direction = "AP significantly DIFFERENT from nocache" if cache_aps.mean() != baseline_aps.mean() else "AP tied"
-                        speedup = baseline_aps.size and (variant_times["nocache"][:, 1].mean() / variant_times[cv][:, 1].mean())
-                        print(f"  [nocache vs {cv:14s}] p={p_value:.4e} ({direction}), "
-                              f"speedup={speedup:.2f}x total training time")
-                    except ValueError as e:
-                        print(f"  [nocache vs {cv}] Wilcoxon test not applicable ({e})")
+                        
+                    eval_trans_aps = variant_aps[cv]["trans"]
+                    eval_ind_aps = variant_aps[cv]["ind"]
+
+                    # Speedup is independent of AP metric, calculate and display once per cache variant
+                    speedup = baseline_trans_aps.size and (variant_times["nocache"][:, 1].mean() / variant_times[cv][:, 1].mean())
+                    print(f"  [nocache vs {cv:14s}] speedup={speedup:.2f}x total training time")
+
+                    # Perform Wilcoxon for both Transductive and Inductive APs
+                    for ap_type, eval_aps, baseline_aps in [("Trans", eval_trans_aps, baseline_trans_aps), ("Induc", eval_ind_aps, baseline_ind_aps)]:
+                        if len(baseline_aps) < 2 or len(eval_aps) < 2:
+                            print(f"  [{ap_type} nocache vs {cv}] fewer than 2 paired samples found -- skipping Wilcoxon test")
+                            continue
+                        if len(baseline_aps) != len(eval_aps):
+                            print(f"  [{ap_type} nocache vs {cv}] unequal sample counts ({len(baseline_aps)} vs {len(eval_aps)}) -- skipping paired Wilcoxon test")
+                            continue
+                        try:
+                            stat, p_value = wilcoxon(eval_aps, baseline_aps)
+                            direction = "no significant AP difference"
+                            if p_value < ALPHA:
+                                direction = "AP significantly DIFFERENT from nocache" if eval_aps.mean() != baseline_aps.mean() else "AP tied"
+                            
+                            print(f"  [{ap_type} nocache vs {cv:14s}] p={p_value:.4e} ({direction})")
+                        except ValueError as e:
+                            print(f"  [{ap_type} nocache vs {cv}] Wilcoxon test not applicable ({e})")
 
     if args.csv and csv_rows:
         with open(args.csv, "w", newline="") as f:

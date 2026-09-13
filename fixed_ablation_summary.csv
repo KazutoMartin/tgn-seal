@@ -1,0 +1,5 @@
+experiment,dataset,aggregator,pooling,cache_mode,hop,n_runs_found,ap_mean,ap_std,mean_epoch_time_s,mean_total_time_s,mean_epochs_to_converge
+TGN_SEAL-Dept1,dept1,attn,target,layered,2hop,1,0.9471363225349194,0.0,179.46036811435923,6101.652515888214,34.0
+TGN_SEAL-Dept2,dept2,attn,target,layered,2hop,2,0.9292510998345028,0.0006737035004144021,98.74853948089812,1728.0964504480362,17.5
+TGN_SEAL-Dept3,dept3,attn,target,layered,2hop,2,0.7745706791401129,0.001098492857094624,31.531520711878933,882.383318066597,28.0
+TGN_SEAL-Dept4,dept4,attn,target,layered,2hop,2,0.9003011205635485,0.00658369378560969,101.80195796718965,1729.7818627357483,17.0

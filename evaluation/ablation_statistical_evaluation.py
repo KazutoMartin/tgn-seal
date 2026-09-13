@@ -22,8 +22,6 @@ POOLING_VARIANTS = ["mean", "target"]
 CACHE_MODE = "nocache"
 HOP_DEPTH = "2hop"
 
-AVAILABLE_KEY = ["val_aps", "new_nodes_val_aps"]
-AP_KEY = AVAILABLE_KEY[0]
 MODE = "mean"
 ALPHA = 0.01
 
@@ -45,7 +43,7 @@ def read_pickle(path):
         return pickle.load(f)
 
 
-def extract_ap(res, key=AP_KEY, mode="best"):
+def extract_ap(res, key, mode="best"):
     aps = np.asarray(res[key])
     if mode == "best":
         return aps.max()
@@ -88,7 +86,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print(f"AP evaluation mode: {MODE.upper()}  |  AP source key: {AP_KEY}")
+    print(f"AP evaluation mode: {MODE.upper()}")
     print("Benchmarking Aggregator (last vs attn) x Pooling (mean vs target)")
     print(f"Fixed Context: {CACHE_MODE}, {HOP_DEPTH}")
     print("=" * 70)
@@ -115,14 +113,19 @@ def main():
                     print(f"  [{combo_key:14s}] partial: {len(found)}/{len(paths)} run(s) found -- using what's there")
 
                 results = [read_pickle(p) for p in found]
-                aps = np.array([extract_ap(r, mode=MODE) for r in results])
+                
+                # Extract both Transductive and Inductive APs
+                trans_aps = np.array([extract_ap(r, key="val_aps", mode=MODE) for r in results])
+                ind_aps = np.array([extract_ap(r, key="new_nodes_val_aps", mode=MODE) for r in results])
+                
                 times = np.array([extract_training_stats(r) for r in results])  # [mean_epoch, total, n_epochs]
 
-                variant_aps[combo_key] = aps
+                variant_aps[combo_key] = {"trans": trans_aps, "ind": ind_aps}
                 variant_times[combo_key] = times
 
-                print(f"  [{combo_key:14s}] AP: {aps.mean():.4f} ± {aps.std():.4f}"
-                      f"   |  mean epoch time: {times[:, 0].mean():.2f}s"
+                print(f"  [{combo_key:14s}] Transductive AP: {trans_aps.mean():.4f} ± {trans_aps.std():.4f}")
+                print(f"  [{'':14s}] Inductive AP:    {ind_aps.mean():.4f} ± {ind_aps.std():.4f}")
+                print(f"  [{'':14s}] mean epoch time: {times[:, 0].mean():.2f}s"
                       f"   |  mean epochs to converge: {times[:, 2].mean():.1f}")
 
                 csv_rows.append({
@@ -133,8 +136,10 @@ def main():
                     "cache_mode": CACHE_MODE,
                     "hop": HOP_DEPTH,
                     "n_runs_found": len(found),
-                    "ap_mean": aps.mean(),
-                    "ap_std": aps.std(),
+                    "trans_ap_mean": trans_aps.mean(),
+                    "trans_ap_std": trans_aps.std(),
+                    "ind_ap_mean": ind_aps.mean(),
+                    "ind_ap_std": ind_aps.std(),
                     "mean_epoch_time_s": times[:, 0].mean(),
                     "mean_total_time_s": times[:, 1].mean(),
                     "mean_epochs_to_converge": times[:, 2].mean(),
@@ -143,25 +148,33 @@ def main():
         # Paired comparisons against the original baseline combination (last + mean)
         baseline_key = "last-mean"
         if baseline_key in variant_aps:
-            baseline_aps = variant_aps[baseline_key]
-            for combo_key, eval_aps in variant_aps.items():
+            baseline_trans_aps = variant_aps[baseline_key]["trans"]
+            baseline_ind_aps = variant_aps[baseline_key]["ind"]
+            
+            for combo_key, eval_aps_dict in variant_aps.items():
                 if combo_key == baseline_key:
                     continue
-                if len(baseline_aps) < 2 or len(eval_aps) < 2:
-                    print(f"  [baseline vs {combo_key:14s}] fewer than 2 paired samples found -- skipping Wilcoxon test")
-                    continue
-                if len(baseline_aps) != len(eval_aps):
-                    print(f"  [baseline vs {combo_key:14s}] unequal sample counts ({len(baseline_aps)} vs {len(eval_aps)}) -- skipping Wilcoxon test")
-                    continue
-                try:
-                    stat, p_value = wilcoxon(eval_aps, baseline_aps)
-                    direction = "no significant AP difference"
-                    if p_value < ALPHA:
-                        direction = "AP significantly DIFFERENT from baseline" if eval_aps.mean() != baseline_aps.mean() else "AP tied"
-                    
-                    print(f"  [baseline vs {combo_key:14s}] p={p_value:.4e} ({direction})")
-                except ValueError as e:
-                    print(f"  [baseline vs {combo_key:14s}] Wilcoxon test not applicable ({e})")
+                
+                eval_trans_aps = eval_aps_dict["trans"]
+                eval_ind_aps = eval_aps_dict["ind"]
+
+                # Perform Wilcoxon for both Transductive and Inductive APs
+                for ap_type, eval_aps, baseline_aps in [("Trans", eval_trans_aps, baseline_trans_aps), ("Induc", eval_ind_aps, baseline_ind_aps)]:
+                    if len(baseline_aps) < 2 or len(eval_aps) < 2:
+                        print(f"  [{ap_type} base vs {combo_key:14s}] fewer than 2 paired samples found -- skipping Wilcoxon test")
+                        continue
+                    if len(baseline_aps) != len(eval_aps):
+                        print(f"  [{ap_type} base vs {combo_key:14s}] unequal sample counts ({len(baseline_aps)} vs {len(eval_aps)}) -- skipping Wilcoxon test")
+                        continue
+                    try:
+                        stat, p_value = wilcoxon(eval_aps, baseline_aps)
+                        direction = "no significant AP difference"
+                        if p_value < ALPHA:
+                            direction = "AP significantly DIFFERENT from baseline" if eval_aps.mean() != baseline_aps.mean() else "AP tied"
+                        
+                        print(f"  [{ap_type} base vs {combo_key:14s}] p={p_value:.4e} ({direction})")
+                    except ValueError as e:
+                        print(f"  [{ap_type} base vs {combo_key:14s}] Wilcoxon test not applicable ({e})")
 
     if args.csv and csv_rows:
         with open(args.csv, "w", newline="") as f:
