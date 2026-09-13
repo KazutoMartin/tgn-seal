@@ -373,10 +373,16 @@ for i in range(args.n_runs):
     cache_hit_rates = []
     train_losses = []
 
+    epoch_mean_extraction_ms = []
+    epoch_mean_push_ms = []
+
     early_stopper = EarlyStopMonitor(max_round=args.patience)
     for epoch in range(NUM_EPOCH):
         start_epoch = time.time()
         ###  Training
+        train_ngh_finder.extraction_time_ms = 0.0
+        if USE_CACHE:
+            train_ngh_finder.cache.push_time_ms = 0.0
 
         # Reinitialize memory of the model at the start of each epoch
         if USE_MEMORY:
@@ -386,6 +392,7 @@ for i in range(args.n_runs):
         if USE_CACHE:
             train_ngh_finder.cache.reset_cache()
             full_ngh_finder.cache.reset_cache()
+        full_ngh_finder.extraction_time_ms = 0.0
 
         # Train using only training graph
         tgn.set_neighbor_finder(train_ngh_finder)
@@ -481,6 +488,12 @@ for i in range(args.n_runs):
         epoch_time = time.time() - start_epoch
         epoch_times.append(epoch_time)
 
+        mean_extract_ms = train_ngh_finder.extraction_time_ms / num_batch
+        mean_push_ms = train_ngh_finder.cache.push_time_ms / num_batch if USE_CACHE else 0.0
+        
+        epoch_mean_extraction_ms.append(mean_extract_ms)
+        epoch_mean_push_ms.append(mean_push_ms)
+
         # Cache analysis
         if USE_CACHE:
             hits = train_ngh_finder.cache.cache_hits
@@ -542,6 +555,8 @@ for i in range(args.n_runs):
                 "epoch_times": epoch_times,
                 "total_epoch_times": total_epoch_times,
                 "cache_hit_rates": cache_hit_rates,
+                "mean_extraction_ms": epoch_mean_extraction_ms,
+                "mean_push_ms": epoch_mean_push_ms,
             },
             open(results_path, "wb"),
         )
@@ -620,6 +635,8 @@ for i in range(args.n_runs):
             "train_losses": train_losses,
             "total_epoch_times": total_epoch_times,
             "cache_hit_rates": cache_hit_rates,
+            "mean_extraction_ms": epoch_mean_extraction_ms,
+            "mean_push_ms": epoch_mean_push_ms,
         },
         open(results_path, "wb"),
     )

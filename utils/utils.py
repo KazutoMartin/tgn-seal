@@ -5,6 +5,7 @@ from scipy.sparse.csgraph import shortest_path
 from torch_geometric.utils import to_scipy_sparse_matrix
 from torch_geometric.data import Data
 from collections import deque
+import time
 
 class EarlyStopMonitor(object):
     def __init__(self, max_round=3, higher_better=True, tolerance=1e-10):
@@ -292,6 +293,7 @@ class TemporalSubgraphCache:
         self.ttl_tracker = {}     
         self.cache_hits = 0       
         self.cache_misses = 0
+        self.push_time_ms = 0.0
 
     def get_subgraph(self, node_id, timestamp, neighbor_finder, y, hop, n_neighbors):
         # Ensure time difference is positive (no time-travel) and within the TTL
@@ -337,6 +339,7 @@ class TemporalSubgraphCache:
         }
 
     def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=2, n_neighbors=10):
+        start_time = time.perf_counter()
         affected_nodes = set([src, dst])
 
         if hop - 1 > 0:
@@ -370,12 +373,14 @@ class TemporalSubgraphCache:
                 cache['edge_index_1'].append(dst)
                 
                 self.ttl_tracker[node] = ts
+        self.push_time_ms += (time.perf_counter() - start_time) * 1000
 
     def reset_cache(self):
         self.subgraph_cache = {}  
         self.ttl_tracker = {}     
         self.cache_hits = 0       
         self.cache_misses = 0
+        self.push_time_ms = 0.0
 
 
 class MultiLayerTemporalCache:
@@ -386,6 +391,7 @@ class MultiLayerTemporalCache:
         self.ttl_tracker = {}     
         self.cache_hits = 0       
         self.cache_misses = 0
+        self.push_time_ms = 0.0
 
     def _init_node_cache(self):
         """Initializes deques partitioned by hop layer for a specific node."""
@@ -496,6 +502,7 @@ class MultiLayerTemporalCache:
         }
 
     def push_edge(self, src, dst, ts, edge_idx, neighbor_finder, y=1, hop=2, n_neighbors=10):
+        start_time = time.perf_counter()
         visited = set([src, dst])
         current_frontier = set([src, dst])
         
@@ -526,12 +533,13 @@ class MultiLayerTemporalCache:
                 current_frontier = next_frontier
                 if not current_frontier:
                     break
-
+        self.push_time_ms += (time.perf_counter() - start_time) * 1000
     def reset_cache(self):
         self.subgraph_cache = {}  
         self.ttl_tracker = {}     
         self.cache_hits = 0       
         self.cache_misses = 0
+        self.push_time_ms = 0.0
 
 class NeighborFinder:
     def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False):
@@ -554,6 +562,8 @@ class NeighborFinder:
         if seed is not None:
             self.seed = seed
             self.random_state = np.random.RandomState(self.seed)
+
+        self.extraction_time_ms = 0.0
 
         if use_layered_cache:
             self.cache = MultiLayerTemporalCache()
@@ -723,6 +733,7 @@ class NeighborFinder:
     def extract_enclosing_subgraph(
         self, src_nodes, dst_nodes, edge_times, y, hop=2, n_neighbors=10, use_cache=False
     ):
+        start_time = time.perf_counter()
         data_list = []
 
         for i, (src, dst, ts) in enumerate(zip(src_nodes, dst_nodes, edge_times)):
@@ -799,6 +810,7 @@ class NeighborFinder:
             )
             data_list.append(data)
 
+        self.extraction_time_ms += (time.perf_counter() - start_time) * 1000
         return data_list
     def get_layered_k_hop_temporal_neighbor(
         self, source_nodes, timestamps, y, hop=2, n_neighbors=10
