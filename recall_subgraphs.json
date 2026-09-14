@@ -1,0 +1,90 @@
+{
+  "email-Eu-core-temporal-Dept1": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9539,
+        "std": 0.0891
+      },
+      "Edges": {
+        "mean": 0.8535,
+        "std": 0.1732
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9522,
+        "std": 0.0901
+      },
+      "Edges": {
+        "mean": 0.7528,
+        "std": 0.1881
+      }
+    }
+  },
+  "email-Eu-core-temporal-Dept2": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9670,
+        "std": 0.0758
+      },
+      "Edges": {
+        "mean": 0.8627,
+        "std": 0.1738
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9660,
+        "std": 0.0765
+      },
+      "Edges": {
+        "mean": 0.7699,
+        "std": 0.1843
+      }
+    }
+  },
+  "email-Eu-core-temporal-Dept3": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9676,
+        "std": 0.0762
+      },
+      "Edges": {
+        "mean": 0.9282,
+        "std": 0.1239
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9676,
+        "std": 0.0762
+      },
+      "Edges": {
+        "mean": 0.8430,
+        "std": 0.1520
+      }
+    }
+  },
+  "email-Eu-core-temporal-Dept4": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9665,
+        "std": 0.0807
+      },
+      "Edges": {
+        "mean": 0.8436,
+        "std": 0.1832
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9659,
+        "std": 0.0813
+      },
+      "Edges": {
+        "mean": 0.7495,
+        "std": 0.1923
+      }
+    }
+  }
+}
