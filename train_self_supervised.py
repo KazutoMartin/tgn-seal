@@ -195,6 +195,10 @@ parser.add_argument(
     help="Ratio of hard 2-hop negative samples when using hybrid_hard sampler",
 )
 
+parser.add_argument("--use_temporal_decay", action="store_true", help="Enable the lambda temporal decay heuristic")
+parser.add_argument("--lambda_decay", type=float, default=0.9, help="Temporal decay base factor (default 0.9)")
+parser.add_argument("--decay_scale", type=float, default=86400.0, help="Time scaling factor (seconds to days)")
+
 parser.add_argument("--drnl_version", type=str, default="fast", choices=["original", "fast"], help="Which DRNL algorithm to run")
 parser.add_argument("--drnl_distinct", action="store_true", help="Give src and dst different node labels")
 
@@ -264,12 +268,14 @@ logger.info(args)
 # Initialize training neighbor finder to retrieve temporal graph
 train_ngh_finder = get_neighbor_finder(
     train_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE,
-    drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct
+    drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct,
+    use_temporal_decay=args.use_temporal_decay
 )
 # Initialize validation and test neighbor finder to retrieve temporal graph
 full_ngh_finder = get_neighbor_finder(
     full_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE,
-    drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct
+    drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct,
+    use_temporal_decay=args.use_temporal_decay
 )
 # Initialize negative samplers. Set seeds for validation and testing so negatives are the same
 # across different runs
@@ -354,7 +360,10 @@ for i in range(args.n_runs):
         pooling_type=args.pooling,
         batch_size=BATCH_SIZE,
         use_cache=USE_CACHE,
-        n_hops=args.n_hops
+        n_hops=args.n_hops,
+        use_temporal_decay=args.use_temporal_decay,
+        lambda_decay=args.lambda_decay,
+        decay_scale=args.decay_scale
     )
     if args.loss == "focal":
         criterion = FastConvergenceFocalLoss(alpha=args.alpha, gamma=args.gamma)

@@ -262,7 +262,7 @@ def get_node_max_ts(source_nodes, edge_times, edge_index, timestamp):
     return np.array(nodes_ts)
 
 
-def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False):
+def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False, use_temporal_decay=False):
     max_node_idx = (
         max(data.sources.max(), data.destinations.max())
         if max_node_idx is None
@@ -275,7 +275,7 @@ def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=Fals
         adj_list[source].append((destination, edge_idx, timestamp))
         adj_list[destination].append((source, edge_idx, timestamp))
 
-    return NeighborFinder(adj_list, uniform=uniform, use_layered_cache=use_layered_cache, drnl_version=drnl_version, drnl_distinct=drnl_distinct)
+    return NeighborFinder(adj_list, uniform=uniform, use_layered_cache=use_layered_cache, drnl_version=drnl_version, drnl_distinct=drnl_distinct, use_temporal_decay=use_temporal_decay)
 
 
 
@@ -544,7 +544,7 @@ class MultiLayerTemporalCache:
         self.push_call_count = 0
 
 class NeighborFinder:
-    def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False):
+    def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False, use_temporal_decay=False):
         self.node_to_neighbors = []
         self.node_to_edge_idxs = []
         self.node_to_edge_timestamps = []
@@ -556,6 +556,8 @@ class NeighborFinder:
 
         self.extraction_time_ms = 0.0
         self.extraction_call_count = 0
+
+        self.use_temporal_decay = use_temporal_decay
 
         for neighbors in adj_list:
             # Neighbors is a list of tuples (neighbor, edge_idx, timestamp)
@@ -813,14 +815,25 @@ class NeighborFinder:
             self.drnl_time_ms += (time.perf_counter() - drnl_start) * 1000
             self.drnl_call_count += 1
 
-            data = Data(
-                nodes=sub_nodes.astype(np.int32),
-                node_timestamps=node_timestamps,
-                edge_index=sub_edge_index,
-                edge_time=sub_edge_times,
-                y=y,
-                z=z,
-            )
+            if self.use_temporal_decay:
+                data = Data(
+                    nodes=sub_nodes.astype(np.int32),
+                    node_timestamps=node_timestamps, # Keep as standard NumPy array
+                    query_time=torch.tensor([ts], dtype=torch.float32),
+                    edge_index=sub_edge_index,
+                    edge_time=sub_edge_times,
+                    y=y,
+                    z=z,
+                )
+            else:
+                data = Data(
+                    nodes=sub_nodes.astype(np.int32),
+                    node_timestamps=node_timestamps,
+                    edge_index=sub_edge_index,
+                    edge_time=sub_edge_times,
+                    y=y,
+                    z=z,
+                )
             data_list.append(data)
 
         self.extraction_time_ms += (time.perf_counter() - start_time) * 1000

@@ -48,9 +48,13 @@ class TGN(torch.nn.Module):
         max_z=100,
         batch_size=200,
         use_cache=False,
-        n_hops=2
+        n_hops=2,
+        use_temporal_decay=False,
+        lambda_decay=0.9,
+        decay_scale=86400.0,
     ):
         super(TGN, self).__init__()
+        self.use_temporal_decay = use_temporal_decay
 
         self.batch_size = batch_size
         self.n_hops = n_hops
@@ -152,7 +156,10 @@ class TGN(torch.nn.Module):
                 max_z=max_z,
                 num_heads=2,        # Configurable
                 dropout=dropout,
-                pooling_type=pooling_type
+                pooling_type=pooling_type,
+                use_temporal_decay=use_temporal_decay,
+                lambda_decay=lambda_decay,
+                decay_scale=decay_scale,
             )
         else:
             # Legacy decoders (dgcnn/gin/sage/gcn/merge) from link_prediction_module.py
@@ -388,7 +395,10 @@ class TGN(torch.nn.Module):
         for data in pos_loader:
             data = data.to(self.device)
             if use_transformer_decoder:
-                score, density = self.link_score(data.x, data.z, data.batch, data.edge_index)
+                if self.use_temporal_decay:
+                    score, density = self.link_score(data.x, data.z, data.batch, data.edge_index, node_timestamps=data.node_timestamps, query_time=data.query_time)
+                else:
+                    score, density = self.link_score(data.x, data.z, data.batch, data.edge_index)
                 pos_scores.append(score)
                 pos_densities.append(density)
             else:
@@ -403,7 +413,10 @@ class TGN(torch.nn.Module):
         for data in neg_loader:
             data = data.to(self.device)
             if use_transformer_decoder:
-                score, density = self.link_score(data.x, data.z, data.batch, data.edge_index)
+                if self.use_temporal_decay:
+                    score, density = self.link_score(data.x, data.z, data.batch, data.edge_index, node_timestamps=data.node_timestamps, query_time=data.query_time)
+                else:
+                    score, density = self.link_score(data.x, data.z, data.batch, data.edge_index)
                 neg_scores.append(score)
                 neg_densities.append(density)
             else:

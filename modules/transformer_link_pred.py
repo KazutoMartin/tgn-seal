@@ -1,12 +1,17 @@
 import torch
 from torch import nn
 from torch_geometric.utils import to_dense_batch
+import numpy as np
 
 class TransformerLinkPred(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, num_layers, max_z, num_heads=4, dropout=0.1, pooling_type="mean"):
+    def __init__(self, in_channels, hidden_channels, num_layers, max_z, num_heads=4, dropout=0.1, pooling_type="mean", use_temporal_decay=False, lambda_decay=0.9, decay_scale=86400.0):
         super().__init__()
         
         self.pooling_type = pooling_type
+
+        self.use_temporal_decay = use_temporal_decay
+        self.lambda_decay = lambda_decay
+        self.decay_scale = decay_scale
         
         # 1. DRNL Structural Encoding
         self.z_embedding = nn.Embedding(max_z + 1, in_channels)
@@ -33,11 +38,27 @@ class TransformerLinkPred(torch.nn.Module):
             nn.Linear(hidden_channels, 1)
         )
 
-    def forward(self, x, z, batch, edge_index):
+    def forward(self, x, z, batch, edge_index, node_timestamps=None, query_time=None):
         z = torch.clamp(z, max=self.z_embedding.num_embeddings - 1)
 
         # Inject DRNL structural features
         x = x + self.z_embedding(z)
+
+        if self.use_temporal_decay and node_timestamps is not None and query_time is not None:
+            # PyG DataLoader does not auto-concatenate NumPy arrays, returning a list instead.
+            if isinstance(node_timestamps, list):
+                # Concatenate, cast to float32 (to prevent precision mismatches), and move to GPU
+                node_timestamps = torch.from_numpy(np.concatenate(node_timestamps)).float().to(x.device)
+            else:
+                node_timestamps = node_timestamps.to(x.device)
+            subgraph_query_times = query_time.squeeze(-1) if query_time.ndim > 1 else query_time
+            node_query_times = subgraph_query_times[batch]
+            
+            delta_t = torch.clamp(node_query_times - node_timestamps, min=0.0)
+            delta_t_scaled = delta_t / max(self.decay_scale, 1e-6)
+            
+            decay_weights = (self.lambda_decay ** delta_t_scaled).unsqueeze(-1)
+            x = x * decay_weights
         
         # Convert k-hop subgraphs and labels into dense tensors
         x_dense, mask = to_dense_batch(x, batch)
