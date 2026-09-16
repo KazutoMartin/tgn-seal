@@ -391,6 +391,11 @@ for i in range(args.n_runs):
 
     epoch_mean_drnl_ms = []
 
+    # Reset peak memory stats before training loop starts
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    epoch_max_memory_mb = []
+
     early_stopper = EarlyStopMonitor(max_round=args.patience)
     for epoch in range(NUM_EPOCH):
         start_epoch = time.time()
@@ -582,6 +587,13 @@ for i in range(args.n_runs):
         val_aps.append(val_ap)
         train_losses.append(np.mean(m_loss))
 
+        # Measure peak allocated memory (in MB)
+        if device.type == "cuda":
+            peak_mb = torch.cuda.max_memory_reserved(device) / (1024 ** 2)
+        else:
+            peak_mb = 0.0
+        epoch_max_memory_mb.append(peak_mb)
+
         # Save temporary results to disk
         pickle.dump(
             {
@@ -594,6 +606,7 @@ for i in range(args.n_runs):
                 "mean_extraction_ms": epoch_mean_extraction_ms,
                 "mean_push_ms": epoch_mean_push_ms,
                 "mean_drnl_ms":epoch_mean_drnl_ms,
+                "epoch_max_gpu_memory_mb": epoch_max_memory_mb,
             },
             open(results_path, "wb"),
         )
@@ -661,6 +674,13 @@ for i in range(args.n_runs):
     logger.info(
         "Test statistics: New nodes -- auc: {}, ap: {}".format(nn_test_auc, nn_test_ap)
     )
+
+    final_max_mem_mb = (
+        torch.cuda.max_memory_reserved(device) / (1024 ** 2)
+        if device.type == "cuda"
+        else 0.0
+    )
+
     # Save results for this run
     pickle.dump(
         {
@@ -675,6 +695,8 @@ for i in range(args.n_runs):
             "mean_extraction_ms": epoch_mean_extraction_ms,
             "mean_push_ms": epoch_mean_push_ms,
             "mean_drnl_ms":epoch_mean_drnl_ms,
+            "max_gpu_memory_mb": final_max_mem_mb,
+            "epoch_max_gpu_memory_mb": epoch_max_memory_mb,
         },
         open(results_path, "wb"),
     )

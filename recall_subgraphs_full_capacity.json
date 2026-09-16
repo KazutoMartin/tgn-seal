@@ -1,0 +1,122 @@
+{
+  "email-Eu-core-temporal-Dept1": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9538,
+        "std": 0.0887
+      },
+      "Edges": {
+        "mean": 0.8534,
+        "std": 0.1726
+      },
+      "DRNL": {
+        "mean": 0.8760,
+        "std": 0.1853
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9538,
+        "std": 0.0887
+      },
+      "Edges": {
+        "mean": 0.8511,
+        "std": 0.1737
+      },
+      "DRNL": {
+        "mean": 0.8766,
+        "std": 0.1846
+      }
+    }
+  },
+  "email-Eu-core-temporal-Dept2": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9669,
+        "std": 0.0757
+      },
+      "Edges": {
+        "mean": 0.8631,
+        "std": 0.1735
+      },
+      "DRNL": {
+        "mean": 0.8882,
+        "std": 0.1664
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9669,
+        "std": 0.0757
+      },
+      "Edges": {
+        "mean": 0.8616,
+        "std": 0.1740
+      },
+      "DRNL": {
+        "mean": 0.8885,
+        "std": 0.1660
+      }
+    }
+  },
+  "email-Eu-core-temporal-Dept3": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9681,
+        "std": 0.0752
+      },
+      "Edges": {
+        "mean": 0.9290,
+        "std": 0.1229
+      },
+      "DRNL": {
+        "mean": 0.8889,
+        "std": 0.1800
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9680,
+        "std": 0.0752
+      },
+      "Edges": {
+        "mean": 0.9289,
+        "std": 0.1229
+      },
+      "DRNL": {
+        "mean": 0.8889,
+        "std": 0.1800
+      }
+    }
+  },
+  "email-Eu-core-temporal-Dept4": {
+    "Flat Cache": {
+      "Nodes": {
+        "mean": 0.9670,
+        "std": 0.0797
+      },
+      "Edges": {
+        "mean": 0.8430,
+        "std": 0.1836
+      },
+      "DRNL": {
+        "mean": 0.8907,
+        "std": 0.1708
+      }
+    },
+    "Layer Cache": {
+      "Nodes": {
+        "mean": 0.9670,
+        "std": 0.0797
+      },
+      "Edges": {
+        "mean": 0.8419,
+        "std": 0.1840
+      },
+      "DRNL": {
+        "mean": 0.8910,
+        "std": 0.1707
+      }
+    }
+  }
+}
