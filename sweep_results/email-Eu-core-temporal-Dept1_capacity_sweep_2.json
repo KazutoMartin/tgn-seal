@@ -1,0 +1,62 @@
+{
+    "dataset": "email-Eu-core-temporal-Dept1",
+    "ttl_seconds": 86400.0,
+    "branching_factor_M": 4.0,
+    "c1_min": 50,
+    "c1_max": 70,
+    "steps": 4,
+    "sweep_records": [
+        {
+            "c1": 50,
+            "c2": 200,
+            "branching_multiplier": 4.0,
+            "iou": 0.7698683455722847,
+            "f2": 0.8525620622596917,
+            "precision": 0.8461663597414878,
+            "recall": 0.8696897392149076,
+            "cache_hit_rate": 0.6526143051154368,
+            "latency_ms": 1.1768414907467861,
+            "cache_hits": 23066,
+            "cache_misses": 12278
+        },
+        {
+            "c1": 56,
+            "c2": 224,
+            "branching_multiplier": 4.0,
+            "iou": 0.7680850432570975,
+            "f2": 0.8513230982445061,
+            "precision": 0.8437849937937404,
+            "recall": 0.8691342415498587,
+            "cache_hit_rate": 0.6522181982797646,
+            "latency_ms": 1.3335674148161443,
+            "cache_hits": 23052,
+            "cache_misses": 12292
+        },
+        {
+            "c1": 63,
+            "c2": 252,
+            "branching_multiplier": 4.0,
+            "iou": 0.76975433994374,
+            "f2": 0.8526072574133754,
+            "precision": 0.8456301014352551,
+            "recall": 0.8696768245353921,
+            "cache_hit_rate": 0.6506337709370756,
+            "latency_ms": 1.501948795056784,
+            "cache_hits": 22996,
+            "cache_misses": 12348
+        },
+        {
+            "c1": 70,
+            "c2": 280,
+            "branching_multiplier": 4.0,
+            "iou": 0.7686811236747695,
+            "f2": 0.8517226263780591,
+            "precision": 0.8439932799769968,
+            "recall": 0.8699301752826918,
+            "cache_hit_rate": 0.6512845178813943,
+            "latency_ms": 1.4365171666744305,
+            "cache_hits": 23019,
+            "cache_misses": 12325
+        }
+    ]
+}

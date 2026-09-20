@@ -1,0 +1,75 @@
+{
+    "dataset": "email-Eu-core-temporal-Dept3",
+    "ttl_seconds": 86400.0,
+    "branching_factor_M": 1.6666666666666667,
+    "c1_min": 110,
+    "c1_max": 130,
+    "steps": 5,
+    "sweep_records": [
+        {
+            "c1": 110,
+            "c2": 184,
+            "branching_multiplier": 1.6666666666666667,
+            "iou": 0.8560073237069665,
+            "f2": 0.9153389100972263,
+            "precision": 0.9066804551627496,
+            "recall": 0.925650859839075,
+            "cache_hit_rate": 0.5740277777777778,
+            "latency_ms": 1.0505077499935094,
+            "cache_hits": 4133,
+            "cache_misses": 3067
+        },
+        {
+            "c1": 115,
+            "c2": 192,
+            "branching_multiplier": 1.6666666666666667,
+            "iou": 0.8536451330456362,
+            "f2": 0.9130538515720984,
+            "precision": 0.9059630776256262,
+            "recall": 0.9233179524247458,
+            "cache_hit_rate": 0.5738888888888889,
+            "latency_ms": 1.0256441944349919,
+            "cache_hits": 4132,
+            "cache_misses": 3068
+        },
+        {
+            "c1": 120,
+            "c2": 200,
+            "branching_multiplier": 1.6666666666666667,
+            "iou": 0.8555707559294958,
+            "f2": 0.9147746886520164,
+            "precision": 0.9065012464058124,
+            "recall": 0.9249994076350655,
+            "cache_hit_rate": 0.5702777777777778,
+            "latency_ms": 1.058299138854232,
+            "cache_hits": 4106,
+            "cache_misses": 3094
+        },
+        {
+            "c1": 125,
+            "c2": 209,
+            "branching_multiplier": 1.6666666666666667,
+            "iou": 0.8527743174313986,
+            "f2": 0.912413671804745,
+            "precision": 0.9048021756130141,
+            "recall": 0.9232541386041262,
+            "cache_hit_rate": 0.575,
+            "latency_ms": 1.074429222207982,
+            "cache_hits": 4140,
+            "cache_misses": 3060
+        },
+        {
+            "c1": 130,
+            "c2": 217,
+            "branching_multiplier": 1.6666666666666667,
+            "iou": 0.8532470988647327,
+            "f2": 0.912726413898015,
+            "precision": 0.905676528123521,
+            "recall": 0.9230889152307302,
+            "cache_hit_rate": 0.57375,
+            "latency_ms": 1.3190114722076234,
+            "cache_hits": 4131,
+            "cache_misses": 3069
+        }
+    ]
+}

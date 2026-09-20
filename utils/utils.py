@@ -262,7 +262,11 @@ def get_node_max_ts(source_nodes, edge_times, edge_index, timestamp):
     return np.array(nodes_ts)
 
 
-def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False, use_temporal_decay=False):
+def get_neighbor_finder(
+    data, uniform, max_node_idx=None, use_layered_cache=False, 
+    drnl_version="fast", drnl_distinct=False, use_temporal_decay=False,
+    flat_cache_max=150, layered_cache_max={1: 20, 2: 60, 3: 180}
+):
     max_node_idx = (
         max(data.sources.max(), data.destinations.max())
         if max_node_idx is None
@@ -275,10 +279,13 @@ def get_neighbor_finder(data, uniform, max_node_idx=None, use_layered_cache=Fals
         adj_list[source].append((destination, edge_idx, timestamp))
         adj_list[destination].append((source, edge_idx, timestamp))
 
-    return NeighborFinder(adj_list, uniform=uniform, use_layered_cache=use_layered_cache, drnl_version=drnl_version, drnl_distinct=drnl_distinct, use_temporal_decay=use_temporal_decay)
-
-
-
+    return NeighborFinder(
+        adj_list, uniform=uniform, use_layered_cache=use_layered_cache, 
+        drnl_version=drnl_version, drnl_distinct=drnl_distinct, 
+        use_temporal_decay=use_temporal_decay,
+        flat_cache_max=flat_cache_max,     
+        layered_cache_max=layered_cache_max
+    )
 
 class TemporalSubgraphCache:
     def __init__(self, ttl_window=86400, max_edges=150):
@@ -544,7 +551,11 @@ class MultiLayerTemporalCache:
         self.push_call_count = 0
 
 class NeighborFinder:
-    def __init__(self, adj_list, uniform=False, seed=None, use_layered_cache=False, drnl_version="fast", drnl_distinct=False, use_temporal_decay=False):
+    def __init__(
+        self, adj_list, uniform=False, seed=None, use_layered_cache=False, 
+        drnl_version="fast", drnl_distinct=False, use_temporal_decay=False,
+        flat_cache_max=150, layered_cache_max={1: 20, 2: 60, 3: 180}
+    ):
         self.node_to_neighbors = []
         self.node_to_edge_idxs = []
         self.node_to_edge_timestamps = []
@@ -577,9 +588,9 @@ class NeighborFinder:
 
 
         if use_layered_cache:
-            self.cache = MultiLayerTemporalCache()
+            self.cache = MultiLayerTemporalCache(max_edges_per_hop=layered_cache_max)
         else:
-            self.cache = TemporalSubgraphCache()
+            self.cache = TemporalSubgraphCache(max_edges=flat_cache_max)
 
     def find_before(self, src_idx, cut_time):
         """

@@ -202,6 +202,20 @@ parser.add_argument("--decay_scale", type=float, default=86400.0, help="Time sca
 parser.add_argument("--drnl_version", type=str, default="fast", choices=["original", "fast"], help="Which DRNL algorithm to run")
 parser.add_argument("--drnl_distinct", action="store_true", help="Give src and dst different node labels")
 
+
+parser.add_argument(
+    "--flat_cache_max", type=int, default=150, help="Max edges for flat cache"
+)
+parser.add_argument(
+    "--layered_cache_h1", type=int, default=20, help="Max edges for hop 1 in layered cache"
+)
+parser.add_argument(
+    "--layered_cache_h2", type=int, default=60, help="Max edges for hop 2 in layered cache"
+)
+parser.add_argument(
+    "--layered_cache_h3", type=int, default=180, help="Max edges for hop 3 in layered cache"
+)
+
 try:
     args = parser.parse_args()
 except:
@@ -265,17 +279,28 @@ logger.info(args)
     randomize_features=args.randomize_features,
 )
 
+layered_capacities = {
+    1: args.layered_cache_h1, 
+    2: args.layered_cache_h2, 
+    3: args.layered_cache_h3
+}
+
 # Initialize training neighbor finder to retrieve temporal graph
 train_ngh_finder = get_neighbor_finder(
     train_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE,
     drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct,
-    use_temporal_decay=args.use_temporal_decay
+    use_temporal_decay=args.use_temporal_decay,
+    flat_cache_max=args.flat_cache_max, 
+    layered_cache_max=layered_capacities
 )
+
 # Initialize validation and test neighbor finder to retrieve temporal graph
 full_ngh_finder = get_neighbor_finder(
     full_data, args.uniform, use_layered_cache=USE_LAYERED_CACHE,
     drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct,
-    use_temporal_decay=args.use_temporal_decay
+    use_temporal_decay=args.use_temporal_decay,
+    flat_cache_max=args.flat_cache_max, 
+    layered_cache_max=layered_capacities
 )
 # Initialize negative samplers. Set seeds for validation and testing so negatives are the same
 # across different runs

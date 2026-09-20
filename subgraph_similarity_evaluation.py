@@ -2,113 +2,131 @@ import numpy as np
 import math
 from tqdm import tqdm
 import random
+import time
+import matplotlib.pyplot as plt
 
 # Assuming these are available in your PYTHONPATH
 from utils.data_processing import get_data
-from utils.utils import get_neighbor_finder, RandEdgeSampler
+from utils.utils import get_neighbor_finder, RandEdgeSampler, MultiLayerTemporalCache
 
-def evaluate_exact_training_fidelity(dataset_name="email-Eu-core-temporal-Dept1", batch_size=200):
-    # 1. Load data and isolate the training split exactly like the training script
-    _, _, _, train_data, _, _, _, _ = get_data(dataset_name)
+def calculate_set_metrics(base_list, cache_list):
+    """Calculates Recall, Precision, and Jaccard IoU for two lists."""
+    base_set = set(base_list)
+    cache_set = set(cache_list)
     
-    # 2. Initialize independent finders
-    base_finder = get_neighbor_finder(train_data, uniform=False, use_layered_cache=False)
-    flat_finder = get_neighbor_finder(train_data, uniform=False, use_layered_cache=False)
+    intersect = len(base_set.intersection(cache_set))
+    union = len(base_set.union(cache_set))
+    
+    recall = intersect / len(base_set) if len(base_set) > 0 else 1.0
+    precision = intersect / len(cache_set) if len(cache_set) > 0 else 1.0
+    iou = intersect / union if union > 0 else 1.0
+    
+    return recall, precision, iou
+
+def evaluate_capacity(dataset_name, train_data, train_sampler, base_finder, capacity_c, batch_size=200):
     layer_finder = get_neighbor_finder(train_data, uniform=False, use_layered_cache=True)
     
-    # 3. Initialize the Negative Sampler 
-    train_sampler = RandEdgeSampler(train_data.sources, train_data.destinations)
+    # Dynamically inject the custom capacity limit
+    hop_capacities = {1: capacity_c, 2: capacity_c * 3}
+    layer_finder.cache = MultiLayerTemporalCache(max_edges_per_hop=hop_capacities)
     
     metrics = {
-        'flat_node_recall': [], 'flat_edge_recall': [], 'flat_drnl_agreement': [],
-        'layer_node_recall': [], 'layer_edge_recall': [], 'layer_drnl_agreement': []
+        'layer_edge_recall': [], 'layer_edge_prec': [], 'layer_edge_iou': [], 'latency_ms': []
     }
     
     num_instance = len(train_data.sources)
     num_batch = math.ceil(num_instance / batch_size)
     
-    # 4. Iterate over batches exactly like the training loop
-    for k in tqdm(range(num_batch), desc="Evaluating Batches"):
+    for k in tqdm(range(num_batch), desc=f"Eval Capacity C={capacity_c}", leave=False):
         start_idx = k * batch_size
         end_idx = min(num_instance, start_idx + batch_size)
         
-        sources_batch = train_data.sources[start_idx:end_idx]
-        destinations_batch = train_data.destinations[start_idx:end_idx]
-        timestamps_batch = train_data.timestamps[start_idx:end_idx]
-        edge_idxs_batch = train_data.edge_idxs[start_idx:end_idx]
+        sources = train_data.sources[start_idx:end_idx]
+        destinations = train_data.destinations[start_idx:end_idx]
+        timestamps = train_data.timestamps[start_idx:end_idx]
+        edge_idxs = train_data.edge_idxs[start_idx:end_idx]
         
-        size = len(sources_batch)
+        size = len(sources)
+        _, negatives = train_sampler.sample(size)
         
-        # Sample negatives for the batch
-        _, negatives_batch = train_sampler.sample(size)
-        
-        # 5. Extraction Step (Mimicking tgn.compute_edge_probabilities)
-        # Baseline (No Cache)
-        base_pos = base_finder.extract_enclosing_subgraph(sources_batch, destinations_batch, timestamps_batch, y=1, use_cache=False)
+        # 1. Baseline Extraction
+        base_pos = base_finder.extract_enclosing_subgraph(sources, destinations, timestamps, y=1, use_cache=False)
         random.seed(42)
-        base_neg = base_finder.extract_enclosing_subgraph(sources_batch, negatives_batch, timestamps_batch, y=0, use_cache=False)
+        base_neg = base_finder.extract_enclosing_subgraph(sources, negatives, timestamps, y=0, use_cache=False)
         
-        # Flat Cache
-        flat_pos = flat_finder.extract_enclosing_subgraph(sources_batch, destinations_batch, timestamps_batch, y=1, use_cache=True)
+        # 2. Layer Cache Extraction
+        start_time = time.perf_counter()
+        layer_pos = layer_finder.extract_enclosing_subgraph(sources, destinations, timestamps, y=1, use_cache=True)
         random.seed(42)
-        flat_neg = flat_finder.extract_enclosing_subgraph(sources_batch, negatives_batch, timestamps_batch, y=0, use_cache=True)
+        layer_neg = layer_finder.extract_enclosing_subgraph(sources, negatives, timestamps, y=0, use_cache=True)
+        batch_latency_ms = (time.perf_counter() - start_time) * 1000 / (size * 2)
+        metrics['latency_ms'].append(batch_latency_ms)
         
-        # Layer Cache
-        layer_pos = layer_finder.extract_enclosing_subgraph(sources_batch, destinations_batch, timestamps_batch, y=1, use_cache=True)
-        random.seed(42)
-        layer_neg = layer_finder.extract_enclosing_subgraph(sources_batch, negatives_batch, timestamps_batch, y=0, use_cache=True)
-        
-        # 6. Calculate Recall and DRNL Agreement for both positive and negative subgraphs
+        # 3. Calculate Edge Metrics
         for i in range(size):
-            for b_data, f_data, l_data in [(base_pos[i], flat_pos[i], layer_pos[i]), (base_neg[i], flat_neg[i], layer_neg[i])]:
+            for b_data, l_data in [(base_pos[i], layer_pos[i]), (base_neg[i], layer_neg[i])]:
+                b_edges, l_edges = b_data.edge_time.tolist(), l_data.edge_time.tolist()
                 
-                base_nodes = b_data.nodes.tolist()
-                flat_nodes = f_data.nodes.tolist()
-                layer_nodes = l_data.nodes.tolist()
-                
-                base_nodes_set = set(base_nodes)
-                base_edges_set = set(b_data.edge_time.tolist())
-                
-                if len(base_nodes_set) > 0:
-                    metrics['flat_node_recall'].append(len(base_nodes_set.intersection(flat_nodes)) / len(base_nodes_set))
-                    metrics['layer_node_recall'].append(len(base_nodes_set.intersection(layer_nodes)) / len(base_nodes_set))
-                    
-                    # DRNL Agreement Calculation
-                    # Create mappings from node ID to DRNL label 'z'
-                    b_z_dict = dict(zip(base_nodes, b_data.z.tolist()))
-                    f_z_dict = dict(zip(flat_nodes, f_data.z.tolist()))
-                    l_z_dict = dict(zip(layer_nodes, l_data.z.tolist()))
-                    
-                    # A match means the node is present in the cache extraction AND its DRNL label is identical
-                    f_drnl_matches = sum(1 for n in base_nodes if n in f_z_dict and b_z_dict[n] == f_z_dict[n])
-                    l_drnl_matches = sum(1 for n in base_nodes if n in l_z_dict and b_z_dict[n] == l_z_dict[n])
-                    
-                    metrics['flat_drnl_agreement'].append(f_drnl_matches / len(base_nodes_set))
-                    metrics['layer_drnl_agreement'].append(l_drnl_matches / len(base_nodes_set))
-                    
-                if len(base_edges_set) > 0:
-                    metrics['flat_edge_recall'].append(len(base_edges_set.intersection(f_data.edge_time.tolist())) / len(base_edges_set))
-                    metrics['layer_edge_recall'].append(len(base_edges_set.intersection(l_data.edge_time.tolist())) / len(base_edges_set))
-        
-        # 7. Push Step (End of Batch)
-        # Exclusively push the batch's positive edges into the cache after extraction is complete
-        for s, d, t, e_idx in zip(sources_batch, destinations_batch, timestamps_batch, edge_idxs_batch):
-            flat_finder.cache.push_edge(s, d, t, e_idx, flat_finder)
+                e_rec, e_prec, e_iou = calculate_set_metrics(b_edges, l_edges)
+                metrics['layer_edge_recall'].append(e_rec)
+                metrics['layer_edge_prec'].append(e_prec)
+                metrics['layer_edge_iou'].append(e_iou)
+
+        # 4. Push Step
+        for s, d, t, e_idx in zip(sources, destinations, timestamps, edge_idxs):
             layer_finder.cache.push_edge(s, d, t, e_idx, layer_finder)
 
-    # 8. Calculate Mean and Standard Deviation
-    flat_node_mean, flat_node_std = np.mean(metrics['flat_node_recall']), np.std(metrics['flat_node_recall'])
-    flat_edge_mean, flat_edge_std = np.mean(metrics['flat_edge_recall']), np.std(metrics['flat_edge_recall'])
-    flat_drnl_mean, flat_drnl_std = np.mean(metrics['flat_drnl_agreement']), np.std(metrics['flat_drnl_agreement'])
-    
-    layer_node_mean, layer_node_std = np.mean(metrics['layer_node_recall']), np.std(metrics['layer_node_recall'])
-    layer_edge_mean, layer_edge_std = np.mean(metrics['layer_edge_recall']), np.std(metrics['layer_edge_recall'])
-    layer_drnl_mean, layer_drnl_std = np.mean(metrics['layer_drnl_agreement']), np.std(metrics['layer_drnl_agreement'])
+    return {k: np.mean(v) for k, v in metrics.items()}
 
-    print(f"\n--- Metrics (Mean ± Std Dev) - {dataset_name}---")
-    print(f"Flat Cache   - Nodes: {flat_node_mean:.4f} ± {flat_node_std:.4f} | Edges: {flat_edge_mean:.4f} ± {flat_edge_std:.4f} | DRNL: {flat_drnl_mean:.4f} ± {flat_drnl_std:.4f}")
-    print(f"Layer Cache  - Nodes: {layer_node_mean:.4f} ± {layer_node_std:.4f} | Edges: {layer_edge_mean:.4f} ± {layer_edge_std:.4f} | DRNL: {layer_drnl_mean:.4f} ± {layer_drnl_std:.4f}")
+def main():
+    dataset_name = "email-Eu-core-temporal-Dept4"
+    _, _, _, train_data, _, _, _, _ = get_data(dataset_name)
+    base_finder = get_neighbor_finder(train_data, uniform=False, use_layered_cache=False)
+    train_sampler = RandEdgeSampler(train_data.sources, train_data.destinations)
+    
+    # Fine-grained linear sweep in the critical plateau region
+    capacities = [15, 20, 25, 30, 35, 40, 45, 50, 55]
+    
+    results = {'recall': [], 'precision': [], 'iou': [], 'latency': []}
+    
+    print(f"Starting Fine-Grained Sweep for {dataset_name}...")
+    for c in capacities:
+        res = evaluate_capacity(dataset_name, train_data, train_sampler, base_finder, c)
+        results['recall'].append(res['layer_edge_recall'])
+        results['precision'].append(res['layer_edge_prec'])
+        results['iou'].append(res['layer_edge_iou'])
+        results['latency'].append(res['latency_ms'])
+        print(f"C={c:2d} | Rec: {res['layer_edge_recall']:.4f} | Prec: {res['layer_edge_prec']:.4f} | IoU: {res['layer_edge_iou']:.4f} | Latency: {res['latency_ms']:.4f}ms")
+
+    x_data = np.array(capacities)
+    
+    plt.figure(figsize=(14, 5))
+    
+    # Subplot 1: Recall vs Precision Trade-off
+    plt.subplot(1, 2, 1)
+    plt.plot(x_data, results['recall'], marker='o', color='green', label='Edge Recall (Missing Data)')
+    plt.plot(x_data, results['precision'], marker='s', color='red', label='Edge Precision (Stale Data)')
+    plt.plot(x_data, results['iou'], marker='^', color='blue', linestyle='--', label='Jaccard IoU (Combined)')
+    
+    plt.title("Subgraph Fidelity: Recall vs Precision Trade-off")
+    plt.xlabel("Base Capacity (Edges per Hop 1)")
+    plt.ylabel("Score [0.0 - 1.0]")
+    plt.legend(loc="lower right")
+    plt.grid(True, linestyle=':', alpha=0.7)
+    
+    # Subplot 2: The Latency/Fidelity Pareto Frontier
+    plt.subplot(1, 2, 2)
+    plt.plot(results['latency'], results['iou'], marker='o', color='purple', linestyle='-')
+    for i, txt in enumerate(capacities):
+        plt.annotate(f"c={txt}", (results['latency'][i], results['iou'][i]), textcoords="offset points", xytext=(0,5), ha='center')
+    plt.title("Fine-Grained Computational Pareto Frontier")
+    plt.xlabel("Mean Extraction Latency (ms / subgraph)")
+    plt.ylabel("Edge Jaccard Similarity (IoU)")
+    plt.grid(True, linestyle=':', alpha=0.7)
+    
+    plt.tight_layout()
+    plt.savefig("fine_grained_capacity_optimization.png", dpi=300)
+    print("\nHigh-resolution optimization plots saved to 'fine_grained_capacity_optimization.png'")
 
 if __name__ == "__main__":
-    for i in range(1, 5):
-        evaluate_exact_training_fidelity(dataset_name=f"email-Eu-core-temporal-Dept{i}")
+    main()
