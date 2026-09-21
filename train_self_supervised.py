@@ -15,9 +15,9 @@ from utils.data_processing import get_data, compute_time_statistics
 from utils.utils import EarlyStopMonitor, RandEdgeSampler, HybridHardEdgeSampler, get_neighbor_finder
 from modules.loss import FastConvergenceFocalLoss
 
-torch.backends.cuda.enable_flash_sdp(False)
-torch.backends.cuda.enable_mem_efficient_sdp(False)
-torch.backends.cuda.enable_math_sdp(True)  # force the reference math backend everywhere
+# torch.backends.cuda.enable_flash_sdp(False)
+# torch.backends.cuda.enable_mem_efficient_sdp(False)
+# torch.backends.cuda.enable_math_sdp(True)  # force the reference math backend everywhere
 
 
 torch.manual_seed(0)
