@@ -216,6 +216,10 @@ parser.add_argument(
     "--layered_cache_h3", type=int, default=180, help="Max edges for hop 3 in layered cache"
 )
 
+parser.add_argument(
+    "--ttl", type=float, default=86400.0, help="Time to live window for the cache in seconds"
+)
+
 try:
     args = parser.parse_args()
 except:
@@ -291,7 +295,8 @@ train_ngh_finder = get_neighbor_finder(
     drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct,
     use_temporal_decay=args.use_temporal_decay,
     flat_cache_max=args.flat_cache_max, 
-    layered_cache_max=layered_capacities
+    layered_cache_max=layered_capacities,
+    ttl_window=args.ttl,
 )
 
 # Initialize validation and test neighbor finder to retrieve temporal graph
@@ -300,7 +305,8 @@ full_ngh_finder = get_neighbor_finder(
     drnl_version=args.drnl_version, drnl_distinct=args.drnl_distinct,
     use_temporal_decay=args.use_temporal_decay,
     flat_cache_max=args.flat_cache_max, 
-    layered_cache_max=layered_capacities
+    layered_cache_max=layered_capacities,
+    ttl_window=args.ttl
 )
 # Initialize negative samplers. Set seeds for validation and testing so negatives are the same
 # across different runs

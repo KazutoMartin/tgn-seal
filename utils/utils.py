@@ -265,7 +265,7 @@ def get_node_max_ts(source_nodes, edge_times, edge_index, timestamp):
 def get_neighbor_finder(
     data, uniform, max_node_idx=None, use_layered_cache=False, 
     drnl_version="fast", drnl_distinct=False, use_temporal_decay=False,
-    flat_cache_max=150, layered_cache_max={1: 20, 2: 60, 3: 180}
+    flat_cache_max=150, layered_cache_max={1: 20, 2: 60, 3: 180}, ttl_window=86400.0
 ):
     max_node_idx = (
         max(data.sources.max(), data.destinations.max())
@@ -284,7 +284,8 @@ def get_neighbor_finder(
         drnl_version=drnl_version, drnl_distinct=drnl_distinct, 
         use_temporal_decay=use_temporal_decay,
         flat_cache_max=flat_cache_max,     
-        layered_cache_max=layered_cache_max
+        layered_cache_max=layered_cache_max,
+        ttl_window=ttl_window
     )
 
 class TemporalSubgraphCache:
@@ -458,6 +459,37 @@ class MultiLayerTemporalCache:
                     ei_1[e_ptr:next_e_ptr] = cache[h]['edge_index_1']
                     
                     e_ptr = next_e_ptr
+
+            # =========================================================
+            # EXTRACTION-TIME TOPOLOGICAL PRUNING
+            # Mimics baseline BFS by enforcing n_neighbors cap per node
+            # =========================================================
+            # max_expected_edges = sum([n_neighbors ** h for h in range(1, hop + 1)])
+            
+            # if len(edge_times) > max_expected_edges:
+            #     # 1. Sort edges from newest to oldest
+            #     sort_idx = np.argsort(edge_times)[::-1]
+                
+            #     kept_indices = []
+            #     node_degree = {}
+                
+            #     # 2. Fast O(E) loop to enforce n_neighbors limit per source node
+            #     for idx in sort_idx:
+            #         src = ei_0[idx]
+            #         if node_degree.get(src, 0) < n_neighbors:
+            #             kept_indices.append(idx)
+            #             node_degree[src] = node_degree.get(src, 0) + 1
+                        
+            #     # 3. Sort indices to restore chronological ascending order
+            #     kept_indices.sort()
+                
+            #     # 4. Apply mask to all arrays
+            #     edge_idxs = edge_idxs[kept_indices]
+            #     edge_times = edge_times[kept_indices]
+            #     ei_0 = ei_0[kept_indices]
+            #     ei_1 = ei_1[kept_indices]
+            #     nodes = np.unique(np.concatenate([ei_0, ei_1]))
+            # # =========================================================
                     
             return {
                 'nodes': nodes,
@@ -554,7 +586,8 @@ class NeighborFinder:
     def __init__(
         self, adj_list, uniform=False, seed=None, use_layered_cache=False, 
         drnl_version="fast", drnl_distinct=False, use_temporal_decay=False,
-        flat_cache_max=150, layered_cache_max={1: 20, 2: 60, 3: 180}
+        flat_cache_max=150, layered_cache_max={1: 20, 2: 60, 3: 180},
+        ttl_window=86400.0
     ):
         self.node_to_neighbors = []
         self.node_to_edge_idxs = []
@@ -588,9 +621,9 @@ class NeighborFinder:
 
 
         if use_layered_cache:
-            self.cache = MultiLayerTemporalCache(max_edges_per_hop=layered_cache_max)
+            self.cache = MultiLayerTemporalCache(max_edges_per_hop=layered_cache_max, ttl_window=ttl_window)
         else:
-            self.cache = TemporalSubgraphCache(max_edges=flat_cache_max)
+            self.cache = TemporalSubgraphCache(max_edges=flat_cache_max, ttl_window=ttl_window)
 
     def find_before(self, src_idx, cut_time):
         """
