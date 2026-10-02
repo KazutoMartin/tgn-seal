@@ -150,7 +150,7 @@ def main():
 
     for idx, (prefix, cmd_args) in enumerate(selected_tasks, 1):
         log_file = logs_path / f"{prefix}.log"
-        full_command = f"python train_self_supervised.py {cmd_args}"
+        full_command = f"uv run python train_self_supervised.py {cmd_args}"
 
         print(f"\n[{idx}/{total_tasks}] Prefix: {prefix}\nCommand: {full_command}")
         if args.dry_run:
