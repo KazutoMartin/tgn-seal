@@ -30,11 +30,11 @@ EXPERIMENT_CONFIGS = [
 VARIATIONS = [
     {
         "suffix": "trans-nocache-meanpool-focal-meanaggr",
-        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator mean --gpu 2"
+        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator mean"
     },
     {
         "suffix": "trans-nocache-meanpool-focal-attnaggr",
-        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator attention --gpu 2"
+        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator attention"
     }
 ]
 
@@ -150,7 +150,7 @@ def main():
 
     for idx, (prefix, cmd_args) in enumerate(selected_tasks, 1):
         log_file = logs_path / f"{prefix}.log"
-        full_command = f"uv run python train_self_supervised.py {cmd_args}"
+        full_command = f"python train_self_supervised.py {cmd_args}"
 
         print(f"\n[{idx}/{total_tasks}] Prefix: {prefix}\nCommand: {full_command}")
         if args.dry_run:
