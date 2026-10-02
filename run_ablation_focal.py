@@ -30,11 +30,11 @@ EXPERIMENT_CONFIGS = [
 VARIATIONS = [
     {
         "suffix": "trans-nocache-meanpool-focal-meanaggr",
-        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator mean"
+        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator mean --gpu 2"
     },
     {
         "suffix": "trans-nocache-meanpool-focal-attnaggr",
-        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator attention"
+        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator attention --gpu 2"
     }
 ]
 
