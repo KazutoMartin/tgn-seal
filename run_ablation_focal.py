@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Base configurations for all datasets
 EXPERIMENT_CONFIGS = [
-    "-d email-Eu-core-temporal-Dept1 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
+    # "-d email-Eu-core-temporal-Dept1 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d email-Eu-core-temporal-Dept2 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d email-Eu-core-temporal-Dept3 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
@@ -32,10 +32,6 @@ VARIATIONS = [
         "suffix": "trans-nocache-meanpool-focal-meanaggr",
         "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator mean"
     },
-    {
-        "suffix": "trans-nocache-meanpool-focal-attnaggr",
-        "flags": "--link_pred_module transformer --pooling mean --loss focal --aggregator attention"
-    }
 ]
 
 POST_PROCESSING_COMMANDS = [
