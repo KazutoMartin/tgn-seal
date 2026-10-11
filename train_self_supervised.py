@@ -147,7 +147,7 @@ parser.add_argument(
 parser.add_argument(
     "--pooling",
     type=str,
-    default="target",
+    default="mean",
     choices=["mean", "target"],
     help="Pooling strategy for the graph transformer (mean or target)",
 )

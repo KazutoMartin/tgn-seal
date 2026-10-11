@@ -29,8 +29,8 @@ EXPERIMENT_CONFIGS = [
 # Specific variations focusing on focal loss, no cache, graph transformer, mean pooling, and aggregator types
 VARIATIONS = [
     {
-        "suffix": "dgcnn-nocache-meanpool-bce-meanaggr",
-        "flags": "--link_pred_module dgcnn --pooling mean --loss bce --aggregator mean"
+        "suffix": "dgcnn-nocache-meanpool-bce-lastaggr-originaldrnl",
+        "flags": "--link_pred_module dgcnn --pooling mean --loss bce --aggregator last --drnl original"
     },
 ]
 
