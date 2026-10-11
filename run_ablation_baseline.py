@@ -26,11 +26,10 @@ EXPERIMENT_CONFIGS = [
     "-d CollegeMsg --use_memory --embedding_module graph_attention --n_runs 10 --n_epoch 50",
 ]
 
-# Specific variations focusing on focal loss, no cache, graph transformer, mean pooling, and aggregator types
 VARIATIONS = [
     {
         "suffix": "dgcnn-nocache-meanpool-bce-lastaggr-originaldrnl",
-        "flags": "--link_pred_module dgcnn --pooling mean --loss bce --aggregator last --drnl original"
+        "flags": "--link_pred_module dgcnn --pooling mean --loss bce --aggregator last --drnl_version original"
     },
 ]
 
