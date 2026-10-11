@@ -18,12 +18,12 @@ from pathlib import Path
 
 # Base configurations for all datasets
 EXPERIMENT_CONFIGS = [
-    # "-d email-Eu-core-temporal-Dept1 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
+    "-d email-Eu-core-temporal-Dept1 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d email-Eu-core-temporal-Dept2 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d email-Eu-core-temporal-Dept3 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d email-Eu-core-temporal-Dept4 --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
     "-d calls --use_memory --embedding_module identity --n_runs 10 --n_epoch 50",
-    "-d CollegeMsg --use_memory --embedding_module attention --n_runs 10 --n_epoch 50",
+    "-d CollegeMsg --use_memory --embedding_module graph_attention --n_runs 10 --n_epoch 50",
 ]
 
 # Specific variations focusing on focal loss, no cache, graph transformer, mean pooling, and aggregator types
