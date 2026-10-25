@@ -729,14 +729,11 @@ class NeighborFinder:
         edge_index = [[], []]
 
         for i, (source_node, timestamp) in enumerate(zip(source_nodes, timestamps)):
-            if y == 1:
-                source_neighbors, source_edge_idxs, source_edge_times = (
-                    self.find_equal_before(source_node, timestamp)
-                )
-            else:
-                source_neighbors, source_edge_idxs, source_edge_times = (
-                    self.find_before(source_node, timestamp)
-                )
+            # STRICT TEMPORAL CAUSALITY: Always extract strictly before `timestamp` (< timestamp)
+            # Never branch on y == 1 vs y == 0, which leaks the target timestamp/concurrent edges.
+            source_neighbors, source_edge_idxs, source_edge_times = (
+                self.find_before(source_node, timestamp)
+            )
 
             if len(source_neighbors) > 0 and n_neighbors > 0:
                 source_neighbors = source_neighbors[-n_neighbors:]
