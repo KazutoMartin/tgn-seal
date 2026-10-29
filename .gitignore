@@ -8,6 +8,7 @@ results*/
 saved_checkpoints/
 saved_models/
 sweep_results/
+hawkes*/
 sweep_*/
 # data/
 .DS_Store

@@ -29,7 +29,7 @@ EXPERIMENT_CONFIGS = [
 VARIATIONS = [
     {
             "suffix": "trans-nocache-meanpool-bce-lastaggr-spatiotemporal",
-            "flags": "--link_pred_module transformer --pooling mean --loss bce --aggregator last --use_temporal_decay"
+            "flags": "--link_pred_module transformer --pooling mean --loss bce --aggregator last --use_temporal_decay --lambda_decay 0.55"
     },
 ]
 
