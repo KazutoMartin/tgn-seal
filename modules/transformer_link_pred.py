@@ -17,7 +17,6 @@ class TransformerLinkPred(torch.nn.Module):
         self.z_embedding = nn.Embedding(max_z + 1, in_channels)
         
         # 2. Dense Transformer
-        # batch_first=True is critical for implicitly triggering FlashAttention/SDPA
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=in_channels, 
             nhead=num_heads, 
