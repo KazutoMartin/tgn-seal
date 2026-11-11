@@ -15,6 +15,9 @@ from utils.data_processing import get_data, compute_time_statistics
 from utils.utils import EarlyStopMonitor, RandEdgeSampler, HybridHardEdgeSampler, get_neighbor_finder
 from modules.loss import FastConvergenceFocalLoss
 
+from torch.nn.attention import sdpa_kernel, SDPBackend
+import warnings; warnings.simplefilter("always")
+
 # torch.backends.cuda.enable_flash_sdp(False)
 # torch.backends.cuda.enable_mem_efficient_sdp(False)
 # torch.backends.cuda.enable_math_sdp(True)  # force the reference math backend everywhere
@@ -498,14 +501,15 @@ for i in range(args.n_runs):
 
                 tgn = tgn.train()
                 # Unpack density tensors
-                pos_prob, neg_prob, pos_density, neg_density = tgn.compute_edge_probabilities(
-                    sources_batch,
-                    destinations_batch,
-                    negatives_batch,
-                    timestamps_batch,
-                    edge_idxs_batch,
-                    NUM_NEIGHBORS,
-                )
+                with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]):
+                    pos_prob, neg_prob, pos_density, neg_density = tgn.compute_edge_probabilities(
+                        sources_batch,
+                        destinations_batch,
+                        negatives_batch,
+                        timestamps_batch,
+                        edge_idxs_batch,
+                        NUM_NEIGHBORS,
+                    )
                 
                 if args.loss == "focal" and args.link_pred_module == "transformer":
                     # Continuous Gamma Mapping hyperparameters
